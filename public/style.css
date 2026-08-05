@@ -1,0 +1,1070 @@
+/* 足一把-生涯模拟器 —— 样式
+   版式照 copero 的生涯模拟器（OVR 徽章、年龄时间线、球场选位、球衣），
+   配色和控件质感照「足一把」的墨绿主题。只有这一套配色，没有浅色主题：
+
+     · 近黑墨绿打底，面板只比底色亮一点点，层次靠 1px 描边而不是大块色差
+     · 按钮和卡片是 7~10px 小圆角，不用胶囊
+     · 交互反馈统一成一条：hover 时描边变绿，再加一圈 inset 内阴影当作加粗
+     · 主按钮绿底深字（--accent / --accent-on），字距 .06em，字号偏小
+     · OVR 徽章和时间线的能力值用金色，跟满屏的绿拉开
+
+   颜色存 HSL 三元组，用的时候 hsl(var(--bg))，要透明度就 hsl(var(--bg) / .5)。
+*/
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC",
+          "HarmonyOS Sans SC", "Source Han Sans SC", "Noto Sans SC",
+          "Segoe UI", "Microsoft YaHei", sans-serif;
+  --r-card: 10px;
+  --r-row: 7px;
+  --maxw: 460px;
+  --maxw-wide: 940px;
+}
+
+/* ---------- 墨绿（唯一一套）---------- */
+html {
+  --bg: 150 7% 6%;
+  --card: 140 7% 9%;
+  --row: 135 7% 11%;
+  --row-hi: 130 6% 15%;
+  --border: 129 6% 21%;
+  --border-strong: 127 6% 27%;
+  --text: 84 10% 93%;
+  --muted: 128 5% 63%;
+  --faint: 127 3% 53%;
+  --accent: 136 39% 51%;
+  --accent-on: 130 30% 8%;
+  --btn-bg: 120 8% 21%;
+  --gold1: 40 66% 55%;
+  --gold2: 32 62% 44%;
+  --warning: 40 66% 55%;
+  --failure: 8 62% 58%;
+  --info: 202 45% 60%;
+  --scrim: 150 10% 2%;
+}
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  font-family: var(--font);
+  background: hsl(var(--bg));
+  color: hsl(var(--text));
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.6;
+  padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
+}
+body.no-actionbar { padding-bottom: 2rem; }
+
+/* ================= 顶栏 ================= */
+.topbar {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  padding: .8rem 3rem;
+  border-bottom: 1px solid hsl(var(--border));
+}
+.brand {
+  display: inline-flex; align-items: center; gap: .45rem;
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font-family: inherit; color: inherit;
+  font-size: 1.15rem; font-weight: 700; letter-spacing: -.01em;
+}
+.brand-mark {
+  display: grid; place-items: center;
+  width: 1.5rem; height: 1.5rem; border-radius: 6px;
+  background: hsl(var(--text)); color: hsl(var(--bg)); font-size: .82rem;
+}
+.corner-btn {
+  position: absolute; right: .75rem; top: 50%; transform: translateY(-50%);
+  font-family: inherit; font-size: .74rem;
+  padding: .32rem .6rem; border-radius: var(--r-row); letter-spacing: .06em;
+  border: 1px solid hsl(var(--border));
+  background: transparent; color: hsl(var(--faint)); cursor: pointer; transition: all .15s;
+}
+.corner-btn:hover { color: hsl(var(--text)); border-color: hsl(var(--muted)); }
+
+/* ================= 布局 ================= */
+#app { max-width: var(--maxw); margin: 0 auto; padding: 1.1rem 1rem 0; }
+#app.wide { max-width: var(--maxw-wide); }
+.view { animation: fade .3s ease; }
+@keyframes fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.hidden { display: none !important; }
+
+/* ================= 首页 ================= */
+.intro { text-align: center; }
+.eyebrow {
+  font-size: .7rem; font-weight: 700; letter-spacing: .2em;
+  text-transform: uppercase; color: hsl(var(--faint));
+}
+.hero-title {
+  margin-top: .9rem;
+  font-size: 1.9rem; font-weight: 800; letter-spacing: -.025em; line-height: 1.15;
+}
+.hero-art {
+  margin: 1.2rem auto 0; width: 100%; aspect-ratio: 4 / 3;
+  border-radius: var(--r-card); overflow: hidden;
+  border: 1px solid hsl(var(--border));
+}
+.hero-art svg { display: block; width: 100%; height: 100%; }
+.hero-sub { margin-top: 1.1rem; font-size: .9rem; color: hsl(var(--muted)); }
+
+.segmented {
+  display: flex; gap: .25rem; margin: 1.4rem auto 0;
+  padding: .25rem; border-radius: var(--r-card);
+  background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+}
+.seg {
+  flex: 1; font-family: inherit; font-size: .86rem; font-weight: 650;
+  padding: .5rem .3rem; border: 0; border-radius: var(--r-row); letter-spacing: .06em;
+  background: transparent; color: hsl(var(--faint)); cursor: pointer;
+  transition: background .18s, color .18s;
+}
+.seg:hover { color: hsl(var(--text)); }
+.seg.selected { background: hsl(var(--accent)); color: hsl(var(--accent-on)); }
+.seg-note { margin-top: .7rem; font-size: .8rem; color: hsl(var(--faint)); min-height: 1.2em; }
+
+/* ================= 按钮 ================= */
+.btn {
+  display: block; width: 100%;
+  font-family: inherit; font-size: .86rem; font-weight: 550; letter-spacing: .06em;
+  padding: .7rem 1.1rem; border-radius: var(--r-row);
+  border: 1px solid hsl(var(--border-strong));
+  background: hsl(var(--btn-bg)); color: hsl(var(--text));
+  cursor: pointer; text-align: center; transition: all .15s;
+}
+.btn:hover { border-color: hsl(var(--accent)); box-shadow: inset 0 0 0 1px hsl(var(--accent)); }
+.btn-primary {
+  background: hsl(var(--accent)); border-color: hsl(var(--accent));
+  color: hsl(var(--accent-on)); font-weight: 650;
+}
+.btn-primary:hover { filter: brightness(1.08); box-shadow: none; }
+.btn:disabled { opacity: .5; cursor: default; filter: none; box-shadow: none; }
+.btn-stack { display: grid; gap: .5rem; margin-top: 1.3rem; }
+
+.actionbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+  display: flex; gap: .6rem;
+  max-width: var(--maxw); margin: 0 auto;
+  padding: .75rem 1rem calc(.75rem + env(safe-area-inset-bottom, 0px));
+  background: hsl(var(--bg) / .93);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid hsl(var(--border));
+}
+.actionbar .btn { flex: 1; }
+.actionbar .btn-back { flex: 0 0 34%; }
+
+/* ================= 分步页头 ================= */
+.step-head { margin-bottom: 1.1rem; }
+.step-title { font-size: 1.45rem; font-weight: 800; letter-spacing: -.02em; }
+.progress { margin-top: .7rem; height: 5px; border-radius: 999px; background: hsl(var(--row)); overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 999px; background: hsl(var(--accent)); transition: width .35s ease; }
+.step-sub { margin-top: .6rem; font-size: .82rem; color: hsl(var(--faint)); }
+
+/* ================= 选择列表 ================= */
+.panel {
+  background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+  border-radius: var(--r-card); padding: .5rem;
+}
+.pick-list { display: grid; gap: .3rem; }
+.pick {
+  display: flex; align-items: center; gap: .7rem; width: 100%;
+  padding: .7rem .8rem; border: 0; border-radius: var(--r-row);
+  background: transparent; color: inherit; font-family: inherit;
+  text-align: left; cursor: pointer;
+}
+.pick:hover { background: hsl(var(--row)); box-shadow: inset 0 0 0 1px hsl(var(--accent)); }
+.pick.selected { background: hsl(var(--row)); box-shadow: inset 0 0 0 1px hsl(var(--accent)); }
+.pick-main { min-width: 0; flex: 1; }
+.pick-name { display: block; font-size: .92rem; font-weight: 650; }
+.pick-desc { display: block; font-size: .76rem; color: hsl(var(--faint)); margin-top: .1rem; }
+.swatch { width: 1.5rem; height: 1.5rem; border-radius: 5px; flex-shrink: 0; }
+
+/* ================= 球场选位置 ================= */
+.pitch {
+  position: relative; width: 100%; max-width: 330px; margin: 0 auto;
+  aspect-ratio: 3 / 4.15;
+  border-radius: var(--r-card); overflow: hidden;
+  border: 1px solid hsl(var(--border));
+}
+.pitch > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.pos-btn {
+  position: absolute; transform: translate(-50%, -50%);
+  font-family: inherit; font-size: .76rem; font-weight: 750; letter-spacing: .03em;
+  padding: .3rem .6rem; border-radius: 999px; white-space: nowrap;
+  background: rgba(8, 30, 22, .82); color: #eafff6;
+  border: 1.5px solid rgba(255, 255, 255, .28);
+  cursor: pointer; transition: transform .15s, background .15s;
+}
+.pos-btn:hover { background: rgba(8, 40, 28, .95); transform: translate(-50%, -50%) scale(1.08); }
+.pos-btn.selected {
+  background: #6ede8a; color: #10281c; border-color: #b7f5c6;
+  transform: translate(-50%, -50%) scale(1.12);
+}
+.pitch-hint { margin-top: .7rem; text-align: center; font-size: .8rem; color: hsl(var(--faint)); }
+.pitch-hint b { color: hsl(var(--text)); font-weight: 700; }
+
+/* ================= 表单 ================= */
+.field-label {
+  display: block; text-align: center;
+  font-size: .66rem; font-weight: 700; letter-spacing: .16em;
+  text-transform: uppercase; color: hsl(var(--faint)); margin-bottom: .35rem;
+}
+.form-row { display: flex; gap: .6rem; margin-top: 1.1rem; }
+.form-row > * { flex: 1; }
+.form-row .narrow { flex: 0 0 30%; }
+.input {
+  width: 100%; font-family: inherit; font-size: .95rem; font-weight: 650;
+  text-align: center; padding: .7rem .8rem;
+  border: 1px solid hsl(var(--border)); border-radius: var(--r-row);
+  background: hsl(var(--card)); color: hsl(var(--text));
+}
+.input::placeholder { color: hsl(var(--faint)); font-weight: 500; }
+.input:focus { outline: none; border-color: hsl(var(--muted)); }
+
+.jersey-wrap { display: grid; place-items: center; padding: 1.2rem 0 .3rem; }
+
+/* 球衣：八个出身各一张画好的图（assets/jersey/），代码不再染色。
+   姓名号码是 SVG 印在图上的，所以图必须是干净的后背。 */
+.jersey {
+  position: relative; display: block;
+  width: 66%; max-width: 230px; aspect-ratio: 1 / 1;
+}
+.jersey picture { position: absolute; inset: 0; display: block; }
+.j-img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.j-print { position: absolute; inset: 0; width: 100%; height: 100%; }
+/* 画好的图垫在最上面，底下那件是按出身主色现画的 SVG。
+   新加一个出身、图还没出的时候，img 会 onerror 给 picture 加 .gone，
+   露出下面这件 —— 不至于在身份页上摆一个破图图标。 */
+.j-fallback { position: absolute; inset: 0; width: 100%; height: 100%; }
+.jersey picture.gone { display: none; }
+.jersey.mini { width: 2.3rem; max-width: none; flex-shrink: 0; }
+
+
+/* ================= 生涯页：三块 =================
+   DOM 顺序是「身份卡 a → 时间线 b → 决策 c」，手机上竖着一条就是这个顺序：
+   照 copero 的读法，先看自己是谁，再看走过的路，决策落在最下面、拇指够得着的地方。
+   宽屏用 grid-template-areas 把 a 和 c 摞回左栏、b 占满右栏，还是原来那两栏。 */
+.career-grid { display: grid; gap: .85rem; align-items: start; }
+/* 网格子项的自动最小尺寸是 min-content，不写这条的话「奖杯柜」那排横向滚动的
+   chip（nowrap 的 flex 行，min-content = 所有 chip 宽度之和）会把整列撑到
+   四百多像素宽，窄屏上整页横向溢出 —— 奖杯多的生涯才会犯，一眼还看不出是它 */
+.career-grid > * { min-width: 0; }
+@media (min-width: 820px) {
+  .career-grid {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+    grid-template-areas: "a b" "c b";
+    gap: 1rem;
+  }
+  .col-a { grid-area: a; }
+  .col-b { grid-area: b; }
+  .col-c { grid-area: c; }
+}
+
+/* 左上：OVR 徽章 + 球队条 */
+.hero-row { display: flex; gap: .7rem; align-items: stretch; }
+/* 能力值分档：铜 → 橙 → 银 → 金 → 白金。徽章和时间线的 pill 共用这套。 */
+.ovr-badge {
+  flex: 0 0 auto; display: grid; place-content: center; text-align: center;
+  min-width: 5rem; padding: .6rem .8rem; border-radius: 12px;
+  background: linear-gradient(155deg, #8a6a44, #5f4426);
+}
+.ovr-badge.bronze { background: linear-gradient(155deg, #c98a45, #8f5a22); }
+.ovr-badge.silver { background: linear-gradient(155deg, #cfd8de, #8d9aa6); }
+.ovr-badge.gold   { background: linear-gradient(155deg, #ffd75e, #d99b1c); }
+/* 最高一档原来是冰蓝白（#eaf6ff → #9fc4dd）。它比金色亮，但**冷**，
+   在 24px 的小胶囊里眼睛只认冷暖不认明度 —— 88 分那一下看着像从金掉回银，
+   明明是升了一档。改成暖白金：顶上接近纯白、底下压回金，再加一圈光晕，
+   读起来是「比金还亮」而不是「另一种灰」。 */
+.ovr-badge.plat {
+  background: linear-gradient(155deg, #fffaea 0%, #ffdf95 52%, #e8ac3c 100%);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .75), 0 0 16px rgba(255, 213, 120, .45);
+}
+.ovr-badge-l { font-size: .6rem; font-weight: 700; letter-spacing: .16em; color: rgba(0,0,0,.55); }
+.ovr-badge-v { font-size: 2rem; font-weight: 800; line-height: 1.05; color: #16110a;
+  font-variant-numeric: tabular-nums; }
+.ovr-badge.up { animation: ovrup .8s ease; }
+.ovr-badge.down { animation: ovrdn .8s ease; }
+@keyframes ovrup { from { box-shadow: 0 0 0 0 hsl(var(--accent)/.75) }
+  to { box-shadow: 0 0 0 15px hsl(var(--accent)/0) } }
+@keyframes ovrdn { from { box-shadow: 0 0 0 0 hsl(var(--failure)/.75) }
+  to { box-shadow: 0 0 0 15px hsl(var(--failure)/0) } }
+
+.club-bar {
+  flex: 1; min-width: 0; position: relative; overflow: hidden;
+  display: flex; align-items: center; gap: .7rem;
+  padding: .65rem .85rem; border-radius: 12px;
+  background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+}
+.club-bar-main { min-width: 0; flex: 1; }
+.tag-row { display: flex; gap: .3rem; margin-bottom: .25rem; flex-wrap: wrap; }
+.tag {
+  font-size: .62rem; font-weight: 750; letter-spacing: .06em;
+  padding: .1rem .45rem; border-radius: 5px;
+  background: hsl(var(--row)); color: hsl(var(--muted));
+}
+.tag.blue { background: hsl(var(--accent) / .18); color: hsl(var(--accent)); }
+/* 球员名是这张卡的主角，队名退一档 —— 一眼扫过去先看见「我是谁」，再看见「我在哪」 */
+.player-name {
+  font-size: 1.15rem; font-weight: 800; letter-spacing: -.02em; line-height: 1.25;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.club-line { display: flex; align-items: center; gap: .45rem; min-width: 0; margin-top: .1rem; }
+/* 队徽：程序按队色生成的盾形，替代原来的小色块 */
+/* 真徽是 <img>，生成的是 <svg>，两者共用同一组尺寸，靠 object-fit 对齐 */
+.crest { flex-shrink: 0; display: block; object-fit: contain; }
+/* 画的队徽走 <picture>（WebP + PNG 兜底），外层这层壳不能吃掉尺寸和收缩规则 */
+.crest-pic { display: block; flex-shrink: 0; line-height: 0; }
+.club-line .crest { width: 1.7rem; height: 1.7rem; }
+.tl-club .crest { width: 1.25rem; height: 1.25rem; }
+.club-name-big {
+  font-size: .95rem; font-weight: 700; letter-spacing: -.01em; color: hsl(var(--muted));
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.club-dot { width: .6rem; height: .6rem; border-radius: 3px; flex-shrink: 0; }
+.club-right { text-align: right; flex-shrink: 0; }
+.cr-l { font-size: .58rem; font-weight: 700; letter-spacing: .12em; color: hsl(var(--faint)); }
+.cr-v { font-size: 1.05rem; font-weight: 750; line-height: 1.15; }
+
+/* 三格总数据 */
+.stat-row {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  margin-top: .8rem; padding: .7rem 0;
+  border-top: 1px solid hsl(var(--border)); border-bottom: 1px solid hsl(var(--border));
+}
+.stat-cell { text-align: center; }
+.stat-cell + .stat-cell { border-left: 1px solid hsl(var(--border)); }
+.stat-l { font-size: .6rem; font-weight: 700; letter-spacing: .14em; color: hsl(var(--faint)); }
+.stat-v { font-size: 1.15rem; font-weight: 750; font-variant-numeric: tabular-nums; margin-top: .1rem; }
+
+/* 四条属性 */
+.bars { display: grid; gap: .45rem; margin-top: .85rem; }
+.bar { display: grid; grid-template-columns: 2.4rem 1fr 1.9rem; align-items: center; gap: .5rem; }
+.bar-l { font-size: .74rem; color: hsl(var(--faint)); }
+.bar-t { height: 5px; border-radius: 999px; background: hsl(var(--row)); overflow: hidden; }
+.bar-f { height: 100%; border-radius: 999px; transition: width .55s cubic-bezier(.22,1,.36,1); }
+.bar-v { font-size: .74rem; text-align: right; font-variant-numeric: tabular-nums; color: hsl(var(--muted)); }
+
+.money-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-top: .6rem; padding: .45rem .55rem;
+  background: hsl(var(--row)); border-radius: var(--r-row);
+  font-size: .78rem; color: hsl(var(--faint));
+}
+.money-row b { font-size: .92rem; font-weight: 750; color: hsl(var(--text)); }
+.money-row b.neg { color: hsl(var(--failure)); }
+
+/* 荣誉室 */
+.trophy-block { margin-top: .9rem; padding-top: .85rem; border-top: 1px solid hsl(var(--border)); }
+.shelf { display: flex; flex-wrap: wrap; gap: .3rem; }
+.chip {
+  font-size: .74rem; font-weight: 650; padding: .22rem .6rem; border-radius: 5px;
+  background: hsl(var(--warning) / .18); color: hsl(var(--warning));
+}
+.chip.award { background: hsl(var(--info) / .18); color: hsl(var(--info)); }
+.empty-case { text-align: center; padding: .5rem 0; color: hsl(var(--faint)); }
+.empty-case-icon { font-size: 1.1rem; opacity: .5; }
+.empty-case-t { font-size: .66rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; margin-top: .15rem; }
+
+/* 「从头来过」：身份卡下面的一行。原来跟正文一样淡，藏得太好，
+   想重开的人找不着 —— 现在用主色描出来。跟决策区那颗按钮仍然是两种质感
+   （那颗是实心绿底，这颗是描边＋一层淡底），抢不走注意力，但一眼能看见。
+   旁边那句说明保持淡色，亮的只是按钮本身。 */
+.restart-row {
+  display: flex; align-items: center; gap: .55rem;
+  margin-top: .8rem; padding-top: .8rem;
+  border-top: 1px solid hsl(var(--border));
+}
+.restart-row span { font-size: .7rem; color: hsl(var(--faint)); }
+.restart-row .mini-btn {
+  flex: 0 0 auto;
+  color: hsl(var(--accent));
+  border-color: hsl(var(--accent) / .5);
+  background: hsl(var(--accent) / .12);
+}
+.restart-row .mini-btn:hover {
+  color: hsl(var(--accent-on)); background: hsl(var(--accent));
+  border-color: hsl(var(--accent));
+}
+.restart-row .mini-btn:active { background: hsl(var(--accent) / .75); }
+
+/* ================= 年龄时间线 ================= */
+.timeline { background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+  border-radius: var(--r-card); padding: .55rem; }
+/* 行装在这里面。宽屏不限高（爱多长多长），手机上在下面的窄屏块里限高＋内部滚动 */
+.tl-scroll { display: grid; gap: 0; }
+.tl-cols {
+  display: grid; grid-template-columns: 2.5rem minmax(0,1fr) 2.5rem 2.6rem 2.6rem 2.6rem;
+  gap: .3rem; align-items: center;
+}
+.tl-head { padding: .3rem .5rem .5rem; }
+.tl-head span { font-size: .58rem; font-weight: 700; letter-spacing: .13em;
+  color: hsl(var(--faint)); text-transform: uppercase; }
+.tl-head .r, .tl-row .r { text-align: right; }
+.tl-row { padding: .42rem .5rem; border-radius: var(--r-row); font-size: .82rem; }
+.tl-row.done { background: hsl(var(--row) / .55); }
+.tl-row.now { background: hsl(var(--accent) / .1); box-shadow: inset 0 0 0 1px hsl(var(--accent) / .45); }
+/* 没有「未来年份」那种行了 —— 时间线写到今天为止，下面直接空着 */
+.age-chip {
+  display: grid; place-items: center; width: 2.1rem; height: 1.6rem;
+  border-radius: 7px; font-size: .76rem; font-weight: 750;
+  background: hsl(var(--row-hi)); color: hsl(var(--muted));
+  font-variant-numeric: tabular-nums;
+}
+.tl-row.now .age-chip { background: hsl(var(--accent)); color: hsl(var(--accent-on)); }
+.tl-club { display: flex; align-items: center; gap: .4rem; min-width: 0; }
+.tl-club-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.ovr-pill {
+  display: inline-block; min-width: 2.1rem; text-align: center;
+  padding: .08rem .3rem; border-radius: 6px;
+  font-size: .74rem; font-weight: 750; font-variant-numeric: tabular-nums;
+  background: linear-gradient(155deg, #8a6a44, #5f4426); color: #fff;
+}
+.ovr-pill.bronze { background: linear-gradient(155deg, #c98a45, #8f5a22); color: #2a1a08; }
+.ovr-pill.silver { background: linear-gradient(155deg, #cfd8de, #8d9aa6); color: #1c2429; }
+.ovr-pill.gold   { background: linear-gradient(155deg, #ffd75e, #d99b1c); color: #2b1f02; }
+/* 跟徽章同一套：暖白金 + 一圈光晕，时间线上 88 分那一行要比 80 分那行更亮 */
+.ovr-pill.plat {
+  background: linear-gradient(155deg, #fffaea 0%, #ffdf95 52%, #e8ac3c 100%);
+  color: #2b1f02;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .7), 0 0 8px rgba(255, 213, 120, .4);
+}
+.tl-n { font-size: .78rem; font-variant-numeric: tabular-nums; color: hsl(var(--muted)); }
+/* min-width:0 是必须的：badge 里的字都是 nowrap，作为 flex 子项它的自动最小尺寸
+   等于 max-content，一行「亚洲杯小组赛出局 中超冠军」就能把整张时间线顶宽，
+   窄屏上右边几列直接被推出屏幕（横向出现滚动条）。允许它缩，让 flex-wrap 生效。 */
+.tl-badges { display: flex; gap: .25rem; flex-wrap: wrap; margin-left: .1rem; min-width: 0; }
+.mini-badge { font-size: .62rem; font-weight: 700; color: hsl(var(--warning)); white-space: nowrap; }
+.mini-badge.bad { color: hsl(var(--failure)); }
+/* 国家队大赛战绩：既不是荣誉也不是伤病，用中性的蓝拉开 */
+.mini-badge.nat { color: hsl(var(--info)); }
+
+/* 结算页国家队卡：每项大赛一行「赛事 — 最好成绩 — 那年多大」 */
+.nat-best { margin-top: .55rem; display: grid; gap: .28rem; }
+.nat-best > div { display: flex; align-items: baseline; gap: .45rem; }
+.nat-best span { font-size: .72rem; color: hsl(var(--faint)); letter-spacing: .04em; }
+.nat-best b { font-size: .92rem; font-weight: 750; }
+.nat-best i { font-style: normal; font-size: .68rem; color: hsl(var(--faint)); margin-left: auto; }
+
+/* ================= 事件 / 决策 ================= */
+/* 事件区不再是「卡中卡」：去掉外壳，用一条分隔线把它接在左栏下面，
+   跟 copero 一样直接长在这一栏里。 */
+.event {
+  margin-top: 1rem; padding-top: 1rem;
+  border-top: 1px solid hsl(var(--border));
+}
+/* 事件块现在是网格里独立的一格，格子之间已经有 gap，自己就别再留上边距了 */
+.col-c .event { margin-top: 0; }
+/* 事件头：左边一块 emoji 当插图，右边 标签 + 标题 */
+.ev-head { display: flex; gap: .7rem; align-items: center; }
+.ev-icon {
+  flex: 0 0 auto; display: grid; place-items: center;
+  width: 2.7rem; height: 2.7rem; border-radius: var(--r-row);
+  background: hsl(var(--row)); border: 1px solid hsl(var(--border));
+  font-size: 1.4rem; line-height: 1;
+}
+.ev-head-main { min-width: 0; }
+.ev-tag {
+  display: inline-block; font-size: .63rem; font-weight: 750; letter-spacing: .16em;
+  text-transform: uppercase; color: hsl(var(--faint)); margin-bottom: .1rem;
+}
+.ev-tag.decision { color: hsl(var(--accent)); }
+.ev-title { font-size: 1.2rem; font-weight: 800; letter-spacing: -.02em; line-height: 1.3; }
+.ev-desc { margin-top: .5rem; font-size: .89rem; color: hsl(var(--muted)); }
+
+.opts { display: grid; grid-template-columns: repeat(2, 1fr); gap: .5rem; margin-top: 1rem; }
+.opt {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: .3rem; width: 100%; min-height: 5.6rem;
+  padding: .8rem .7rem; border: 1px solid hsl(var(--border));
+  border-radius: var(--r-card); background: hsl(var(--card)); color: inherit;
+  font-family: inherit; text-align: center; cursor: pointer; transition: all .15s;
+}
+/* 三个选项就三列并排：青训和转会窗那三家报价本来就是「三选一」，
+   二加一地摆会让第三张卡看着像另一档的东西。列数由 data-n 决定。 */
+.opts[data-n="3"] { grid-template-columns: repeat(3, 1fr); }
+/* 落单的那张卡占满整行（只有一个选项、或四个里的第五个），别孤零零缩在左边。
+   三列那一档天然不落单，要排除掉，否则第三张会被拉成整行。 */
+.opts:not([data-n="3"]) > .opt:last-child:nth-child(odd),
+.opts > .btn { grid-column: 1 / -1; }
+
+/* 「留下 / 挂靴」不是俱乐部，跟三家报价分开一排，做得比球队卡矮一档 */
+.opts-alt { margin-top: .5rem; }
+.opts-alt .opt {
+  flex-flow: row wrap; align-items: baseline; justify-content: center;
+  gap: .1rem .5rem; min-height: 0; padding: .6rem .7rem;
+}
+.opt-lead { font-size: .68rem; color: hsl(var(--faint)); letter-spacing: .06em; }
+.opt .crest { width: 2rem; height: 2rem; margin: .15rem 0; }
+.opt:hover { border-color: hsl(var(--accent)); box-shadow: inset 0 0 0 1px hsl(var(--accent)); }
+.opt-label { display: block; font-size: .92rem; font-weight: 700; line-height: 1.3; }
+.opt-hint { display: block; font-size: .72rem; color: hsl(var(--faint)); line-height: 1.35; }
+
+.result { margin-top: .9rem; padding: .85rem .9rem; background: hsl(var(--row));
+  border-radius: var(--r-row); font-size: .89rem; }
+.deltas { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .65rem; }
+.delta {
+  font-size: .72rem; font-weight: 700; font-variant-numeric: tabular-nums;
+  padding: .12rem .5rem; border-radius: 5px;
+  background: hsl(var(--row-hi)); color: hsl(var(--muted));
+}
+.delta.up { background: hsl(var(--accent) / .2); color: hsl(var(--accent)); }
+.delta.down { background: hsl(var(--failure) / .2); color: hsl(var(--failure)); }
+
+/* ---------- 抽签：两边跳，最后落一边 ----------
+   概率用金色，跟满屏的绿拉开，和 OVR 徽章是同一套逻辑。
+   高亮（.on）复用全站那条统一的反馈：描边变绿 + 一圈 inset 内阴影。 */
+/* minmax(0,1fr) 而不是 1fr：两边的说法长短不一，纯 1fr 会被长的那边把列撑宽，
+   两个格子一大一小，跳动的时候还会跟着抖 */
+.roulette {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center; gap: .55rem; margin-top: 1rem;
+}
+.slot {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: .1rem; min-height: 4.6rem; padding: .7rem .6rem; text-align: center;
+  border: 1px solid hsl(var(--border)); border-radius: var(--r-card);
+  background: hsl(var(--card));
+  transition: border-color .12s, box-shadow .12s, background .12s, opacity .25s, transform .12s;
+}
+.slot-pct {
+  font-size: 1.15rem; font-weight: 800; line-height: 1.1;
+  font-variant-numeric: tabular-nums; letter-spacing: -.02em;
+  color: hsl(var(--gold1));
+}
+.slot-lab { font-size: .76rem; color: hsl(var(--muted)); line-height: 1.3; }
+/* 中间这块「抽签中 / 落定」定宽，字数变了两边的格子也不跟着挪 */
+.roulette-vs {
+  font-size: .6rem; font-weight: 750; letter-spacing: .16em;
+  color: hsl(var(--faint)); white-space: nowrap;
+  min-width: 3.4rem; text-align: center;
+}
+.roulette[data-state="spin"] .roulette-vs { animation: vs-blink 1s ease-in-out infinite; }
+
+/* 跳到哪边，哪边亮 */
+.slot.on {
+  background: hsl(var(--row-hi)); border-color: hsl(var(--accent));
+  box-shadow: inset 0 0 0 1px hsl(var(--accent));
+  transform: translateY(-1px);
+}
+/* 落定 */
+.slot.win {
+  background: hsl(var(--accent) / .12); border-color: hsl(var(--accent));
+  box-shadow: inset 0 0 0 1px hsl(var(--accent));
+  animation: slot-land .4s cubic-bezier(.2, 1.4, .4, 1);
+}
+.slot.win .slot-lab { color: hsl(var(--text)); font-weight: 700; }
+.slot.lose { opacity: .38; }
+
+@keyframes vs-blink { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+@keyframes slot-land {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.045); }
+  100% { transform: scale(1); }
+}
+/* 抽签落定之后结果才浮出来 */
+.roulette + .result { animation: result-in .32s ease-out; }
+@keyframes result-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .slot, .slot.win, .roulette[data-state="spin"] .roulette-vs, .roulette + .result {
+    animation: none; transition: none;
+  }
+}
+
+.season-mini { display: grid; gap: .25rem; margin-top: .8rem; }
+
+/* ================= 结算 =================
+   照 copero 的「生涯完成」那屏：顶部姓名 + 身价 + OVR，
+   然后国家队 / 个人奖项两张卡，再往下每家效力过的俱乐部一张卡（队色渐变 + 队徽水印）。 */
+.sum-hero {
+  display: flex; align-items: center; gap: 1rem;
+  background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+  border-radius: var(--r-card); padding: 1rem 1.1rem;
+}
+.sum-hero-main { flex: 1; min-width: 0; }
+.sum-name { font-size: 1.9rem; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; margin: .25rem 0 .4rem; }
+.sum-hero-side { text-align: right; flex-shrink: 0; }
+.sum-hero .ovr-badge { min-width: 4.4rem; }
+
+/* 窄屏时三张卡自然堆叠，不需要额外规则 */
+.sum-top { display: grid; gap: .5rem; }
+.sum-card {
+  position: relative; overflow: hidden;
+  border: 1px solid hsl(var(--border)); border-radius: var(--r-card);
+  padding: .85rem .95rem; background: hsl(var(--card));
+}
+.sum-card.nat::before, .sum-card.awards::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+}
+.sum-card.nat::before { background: linear-gradient(120deg, #b12a2a55, transparent 65%); }
+.sum-card.awards::before { background: linear-gradient(120deg, #d9a63f4d, transparent 65%); }
+.sum-card > * { position: relative; }
+.sum-card-l { font-size: .62rem; font-weight: 750; letter-spacing: .18em;
+  text-transform: uppercase; color: hsl(var(--faint)); }
+.sum-card-title { font-size: 1.15rem; font-weight: 750; margin-top: .15rem; }
+.sum-card-stat { font-size: .8rem; color: hsl(var(--muted)); margin-top: .1rem; }
+.case-empty { font-size: .74rem; color: hsl(var(--faint)); margin-top: .6rem;
+  letter-spacing: .1em; }
+
+/* 奖杯：真图是竖长的实物照，跟原来手画 SVG 的横向比例不同，
+   所以统一给一个竖向的框，用 object-fit 装进去 */
+.trophy { width: 1.5rem; height: 1.9rem; display: block; object-fit: contain; }
+.trophy-row { display: flex; flex-wrap: wrap; gap: .5rem .85rem; margin-top: .6rem; }
+.trophy-item { display: flex; align-items: center; gap: .3rem;
+  font-size: .72rem; color: hsl(var(--muted)); }
+
+/* 奖杯陈列：结算页单独一栏，横排大图标 + 右下角的 ×N */
+.trophy-hall {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 1.1rem .6rem;
+  padding: 1.3rem 1rem;
+  background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+  border-radius: var(--r-card);
+}
+.hall-item {
+  position: relative; width: 5.2rem;
+  display: flex; flex-direction: column; align-items: center; gap: .4rem;
+}
+.hall-item .trophy { width: 2.9rem; height: 3.6rem; }
+.hall-count {
+  position: absolute; top: 2.3rem; right: .55rem;
+  background: hsl(var(--bg)); color: hsl(var(--text));
+  border: 1px solid hsl(var(--border-strong));
+  border-radius: 999px; font-size: .68rem; font-weight: 750;
+  padding: .02rem .38rem; font-variant-numeric: tabular-nums;
+}
+.hall-name { font-size: .66rem; color: hsl(var(--muted)); text-align: center; line-height: 1.3; }
+.empty-hall { color: hsl(var(--faint)); font-size: .8rem; letter-spacing: .1em; }
+
+/* 俱乐部卡 */
+.club-grid { display: grid; gap: .5rem; margin-top: .5rem; }
+@media (min-width: 620px) { .club-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 860px) { .club-grid { grid-template-columns: repeat(3, 1fr); } }
+.club-card {
+  position: relative; overflow: hidden; min-height: 14rem;
+  display: flex; flex-direction: column;
+  border: 1px solid hsl(var(--border)); border-radius: var(--r-card);
+  background: hsl(var(--card));
+}
+/* 队色从上往下铺，越往下越浓，和 copero 那几张卡一样 */
+.club-card::before {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(180deg, var(--tc) -20%, transparent 78%);
+  opacity: .5;
+}
+/* 队徽水印：放大居中压在卡片中部 */
+.club-card-wash {
+  position: absolute; left: 50%; top: 46%; width: 78%;
+  transform: translate(-50%, -50%);
+  opacity: .07; pointer-events: none;
+}
+/* 真徽是彩色位图，同样的透明度会比生成的盾徽抢眼得多 */
+.club-card-wash img.crest { opacity: .55; filter: grayscale(.35); }
+.club-card-wash .crest { width: 100%; height: auto; }
+.club-card-body {
+  position: relative; flex: 1;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 1.1rem .9rem .9rem; text-align: center;
+}
+.club-card-crest { height: 3.4rem; display: grid; place-items: center; }
+.club-card-crest .crest { width: 3.4rem; height: 3.4rem; }
+.club-card-name { font-size: 1.05rem; font-weight: 750; margin-top: .6rem; line-height: 1.25; }
+.club-card-lg { font-size: .72rem; color: hsl(var(--muted)); margin-top: .1rem; }
+/* 数据压在一条深色带里，三列均分 */
+.club-card-stats {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  width: 100%; margin-top: auto; padding: .55rem .2rem;
+  background: hsl(var(--bg) / .55); border-radius: var(--r-row);
+}
+.club-card-stats span { font-size: .64rem; color: hsl(var(--muted));
+  display: flex; flex-direction: column; align-items: center; gap: .05rem; }
+.club-card-stats b { font-size: 1.15rem; font-weight: 750; color: hsl(var(--text));
+  font-variant-numeric: tabular-nums; }
+.club-card-tro { display: flex; flex-wrap: wrap; justify-content: center; align-items: center;
+  gap: .35rem .7rem; margin-top: .55rem; width: 100%; min-height: 1.7rem; }
+
+/* 结局是整段生涯的落点，得是这一页最亮的一块。
+   以前它跟俱乐部卡、奖杯陈列共用同一套「card 底 + 1px 描边」，
+   滚到最后根本认不出这行字就是结果。现在四层一起上：
+   金色描边、中心往外散的暖光、渐变字面、字后面一圈光晕。
+   颜色仍然只用既有的 --gold1/--gold2（全站的金就这一套，跟满屏的绿拉开）。 */
+.ending {
+  position: relative; overflow: hidden;
+  text-align: center; padding: 2.4rem 1.2rem 2rem; margin-top: .5rem;
+  border-radius: var(--r-card);
+  background:
+    radial-gradient(120% 140% at 50% 0%, hsl(var(--gold1) / .16), transparent 62%),
+    linear-gradient(hsl(var(--row-hi)), hsl(var(--card)));
+  border: 1px solid hsl(var(--gold1) / .5);
+  box-shadow:
+    0 0 0 1px hsl(var(--gold1) / .12),
+    0 0 34px -6px hsl(var(--gold1) / .34),
+    inset 0 1px 0 hsl(var(--gold1) / .22);
+}
+/* 顶边那道金线：中间最亮、两头淡出，像一束光打在这张卡上 */
+.ending::before {
+  content: ""; position: absolute; top: 0; left: 12%; right: 12%; height: 1px;
+  background: linear-gradient(90deg, transparent, hsl(var(--gold1) / .95), transparent);
+}
+.ending-eyebrow {
+  font-size: .66rem; letter-spacing: .24em; text-transform: uppercase;
+  color: hsl(var(--gold1) / .85); font-weight: 750;
+}
+.ending-title {
+  margin-top: .5rem;
+  font-size: 2.6rem; font-weight: 800; letter-spacing: -.035em; line-height: 1.15;
+  background: linear-gradient(180deg, hsl(48 92% 78%), hsl(var(--gold1)) 55%, hsl(var(--gold2)));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: hsl(var(--gold1));
+  /* 渐变字自己不吃 text-shadow，光晕靠底下垫一层同样的字（.ending-glow） */
+}
+/* 字后面的那圈光。用同一串文字绝对定位垫在下面，只留模糊的金色。
+   直接给渐变字加 text-shadow 是没有效果的 —— 字面已经被 clip 成透明了。 */
+/* z-index: 0 不是多余的 —— 它让 wrap 自己成为一个层叠上下文，
+   底下那层 z-index:-1 的光晕才只沉到 wrap 后面。不写的话 -1 会一路往上冒，
+   沉到 .ending 的背景**之下**，光晕就被卡片底色整个盖掉，一点看不见。 */
+.ending-title-wrap { position: relative; display: inline-block; z-index: 0; }
+.ending-glow {
+  position: absolute; inset: 0; z-index: -1;
+  color: hsl(var(--gold1) / .55); filter: blur(14px);
+  font-size: 2.6rem; font-weight: 800; letter-spacing: -.035em; line-height: 1.15;
+  pointer-events: none; user-select: none;
+}
+.ending-desc { margin-top: .9rem; font-size: .92rem; color: hsl(var(--text) / .82); }
+@media (max-width: 420px) {
+  .ending-title, .ending-glow { font-size: 2.1rem; }
+}
+
+.section-head { display: flex; align-items: baseline; justify-content: space-between; margin: 1.4rem 0 .5rem; }
+.section-head h2 { font-size: .68rem; font-weight: 750; letter-spacing: .18em;
+  text-transform: uppercase; color: hsl(var(--faint)); }
+.section-head span { font-size: .74rem; color: hsl(var(--faint)); }
+
+/* ================= 弹窗 ================= */
+.overlay {
+  position: fixed; inset: 0; z-index: 70;
+  background: hsl(var(--scrim) / .65); backdrop-filter: blur(4px);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.modal {
+  position: relative; width: 100%; max-width: var(--maxw);
+  max-height: 86vh; overflow-y: auto;
+  background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+  border-radius: var(--r-card) var(--r-card) 0 0;
+  padding: 1.4rem 1.2rem calc(1.4rem + env(safe-area-inset-bottom, 0px));
+}
+.modal h2 { font-size: 1.15rem; font-weight: 750; margin-bottom: .7rem; }
+.modal h3 { font-size: .78rem; font-weight: 750; letter-spacing: .12em; text-transform: uppercase;
+  color: hsl(var(--faint)); margin: 1.1rem 0 .4rem; }
+.modal p { font-size: .87rem; color: hsl(var(--muted)); margin-bottom: .6rem; }
+.modal ul { padding-left: 1.05rem; }
+.modal li { font-size: .85rem; color: hsl(var(--muted)); margin-bottom: .3rem; }
+.modal strong { color: hsl(var(--text)); font-weight: 700; }
+.modal-close {
+  position: absolute; top: .9rem; right: .9rem;
+  width: 1.75rem; height: 1.75rem; line-height: 1;
+  border: 1px solid hsl(var(--border)); border-radius: var(--r-row);
+  background: transparent; color: hsl(var(--faint)); cursor: pointer; font-size: .78rem;
+}
+/* 宽屏把弹窗从底部抽屉改成居中的卡片 —— 桌面上没有拇指区这回事，
+   贴着屏幕最下沿反而离视线最远。断点跟生涯页两栏那条对齐（820px）。
+   窄屏不动，还是从下往上推的抽屉。 */
+@media (min-width: 820px) {
+  .overlay { align-items: center; padding: 1.5rem 1rem; }
+  .modal {
+    max-height: min(86vh, 44rem);
+    border-radius: var(--r-card);
+    padding-bottom: 1.4rem;   /* 居中之后 safe-area 那圈留白没意义了 */
+  }
+}
+
+/* ---- 更新公告 ----
+   正文不吃 .modal li 那个 --muted：公告是进游戏前唯一要人读完的一屏，
+   63% 亮度的灰在深底上糊成一片。用 --text 拉到正常正文的对比度，
+   字号和行距也一起放大一档。 */
+.news-date { font-size: .74rem; letter-spacing: .1em; color: hsl(var(--muted));
+  margin: -.4rem 0 .9rem; }
+.news-list li {
+  margin-bottom: .7rem; line-height: 1.8;
+  font-size: .88rem; color: hsl(var(--text) / .92);
+}
+/* 条目里的链接跟着正文一起提亮，用主色标出来 */
+.news-list a { color: hsl(var(--accent)); text-decoration: none;
+  border-bottom: 1px solid hsl(var(--accent) / .45); }
+.news-link { margin: -.3rem 0 .9rem; }
+/* 玩法弹窗里那个「看看最近更新了什么」，以及公告里的「复制群号」 */
+.mini-btn {
+  padding: .3rem .7rem; border-radius: var(--r-row);
+  border: 1px solid hsl(var(--border)); background: transparent;
+  color: hsl(var(--muted)); font-size: .76rem; font-weight: 650; cursor: pointer;
+}
+.mini-btn:active { background: hsl(var(--border) / .5); }
+.qq-group {
+  display: flex; align-items: center; justify-content: space-between; gap: .8rem;
+  padding: .7rem .85rem; margin-bottom: 1rem;
+  border: 1px solid hsl(var(--border)); border-radius: var(--r-row);
+  background: hsl(var(--border) / .25);
+}
+.qq-label { display: block; font-size: .7rem; letter-spacing: .1em; color: hsl(var(--faint)); }
+/* 群号可选中：复制按钮在 http 或不安全上下文里拿不到剪贴板，那时候还能长按选 */
+.qq-num { font-size: 1.05rem; font-weight: 750; letter-spacing: .06em;
+  color: hsl(var(--text)); user-select: all; -webkit-user-select: all; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 6rem; transform: translateX(-50%); z-index: 90;
+  padding: .5rem 1.1rem; border-radius: var(--r-row);
+  background: hsl(var(--accent)); color: hsl(var(--accent-on));
+  font-size: .82rem; font-weight: 650;
+}
+
+.footer {
+  max-width: var(--maxw-wide); margin: 2.5rem auto 0; padding: 1.2rem 1rem;
+  font-size: .74rem; color: hsl(var(--faint)); text-align: center;
+}
+.footer-by { margin-top: .35rem; }
+.footer-by a {
+  color: hsl(var(--muted)); text-decoration: none;
+  border-bottom: 1px solid hsl(var(--border-strong)); padding-bottom: 1px;
+  transition: color .15s, border-color .15s;
+}
+.footer-by a:hover { color: hsl(var(--accent)); border-color: hsl(var(--accent)); }
+.empty { font-size: .8rem; color: hsl(var(--faint)); padding: .4rem 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+/* ================= 手机版生涯页 =================
+   目标是一屏装完：身份卡 → 属性 → 时间线 → 决策，做一次决策不用上下找。
+   照 copero 的手机版量的 —— 那一屏是 45(顶栏) + 72(身份卡) + 210(时间线) +
+   190(决策) ≈ 680，正好落在一屏里。这边多出属性条和奖杯柜两块，
+   所以能压的都压：属性条从竖着三行改成横着三列，奖杯柜空着就整块不占位，
+   时间线限高、内部滚动，页脚在生涯页收起来。 */
+@media (max-width: 819px) {
+  /* 只收生涯页：首页、身份三步、结算页的留白照旧，那几屏本来就不挤 */
+  body.in-career #app { padding: .55rem .7rem 0; }
+  body.in-career.no-actionbar { padding-bottom: .7rem; }
+  body.in-career .footer { display: none; }
+  body.in-career .topbar { padding: .5rem 3rem; }
+  .career-grid { gap: .55rem; }
+
+  /* 徽章 + 身份 + 三格数据合成一张卡，跟分享卡是同一个读法。
+     里面的 .club-bar 就不能再是「卡中卡」了，去掉它自己的底和边。 */
+  .player-card {
+    background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+    border-radius: var(--r-card); padding: .6rem .65rem;
+  }
+  .player-card .club-bar { background: none; border: 0; padding: 0 0 0 .1rem; }
+  .player-card .ovr-badge { min-width: 4.2rem; padding: .45rem .6rem; }
+  .player-card .ovr-badge-v { font-size: 1.75rem; }
+  .player-card .player-name { font-size: 1.05rem; }
+  .player-card .club-name-big { font-size: .86rem; }
+  .player-card .club-line .crest { width: 1.4rem; height: 1.4rem; }
+  .player-card .cr-v { font-size: .95rem; }
+  .player-card .tag-row { margin-bottom: .15rem; }
+  .player-card .stat-row {
+    margin-top: .45rem; padding: .4rem 0 0; border-bottom: 0;
+  }
+  .player-card .stat-l { font-size: .56rem; letter-spacing: .1em; }
+  .player-card .stat-v { font-size: 1rem; }
+
+  /* 三条属性横过来铺，一行装下：标签和数值一排，条压在下面。
+     竖着三行要 80px，横过来 34px —— 省下来的正好够决策区多一行说明。 */
+  /* 三条属性 + 财富挤成一行：标签和数值一排，条压在下面，钱贴右边。
+     竖着排要 110px，横过来 38px —— 省下来的正好够时间线多露两年 */
+  .meters { display: flex; align-items: center; gap: .55rem; margin-top: .45rem; }
+  .bars { flex: 1; min-width: 0; grid-template-columns: repeat(3, 1fr); gap: .1rem .5rem; margin-top: 0; }
+  /* 行列都写死。只写 grid-column 的话，源码顺序是「标签 → 条 → 数值」，
+     条占满整行只能落到第二行，数值再被自动排版推到第三行去 —— 一条属性占三行高 */
+  .bar { grid-template-columns: 1fr auto; gap: .05rem .25rem; }
+  .bar-l { grid-row: 1; grid-column: 1; font-size: .66rem; }
+  .bar-v { grid-row: 1; grid-column: 2; font-size: .66rem; }
+  .bar-t { grid-row: 2; grid-column: 1 / -1; }
+  .money-row {
+    flex-direction: column; align-items: flex-end; gap: 0;
+    margin-top: 0; padding: .15rem .45rem; font-size: .62rem; white-space: nowrap;
+  }
+  .money-row b { font-size: .8rem; line-height: 1.2; }
+
+  /* 奖杯柜：有奖杯才占一行，横着滚；空的时候整块收掉（时间线上本来就有荣誉徽标） */
+  .trophy-block { margin-top: .45rem; padding-top: .45rem; }
+  .trophy-block .chip { font-size: .68rem; padding: .16rem .5rem; }
+  .trophy-block.empty { display: none; }
+  .trophy-block .shelf {
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .trophy-block .shelf::-webkit-scrollbar { display: none; }
+  .trophy-block .chip { white-space: nowrap; }
+
+  /* 窄屏一屏就那么高：收紧留白，说明那句话也压小一档 */
+  .restart-row { margin-top: .45rem; padding-top: .45rem; gap: .45rem; }
+  .restart-row span { font-size: .64rem; }
+  .restart-row .mini-btn { padding: .22rem .55rem; font-size: .7rem; }
+
+  /* 时间线限高 + 内部滚动。表头和国家队那行留在外面不跟着滚，
+     长模式二十五行也只占这么高，决策永远在这块下面 */
+  .timeline { padding: .4rem; }
+  .tl-head { padding: .15rem .45rem .3rem; }
+  .tl-scroll {
+    max-height: min(30vh, 18rem); overflow-y: auto;
+    scrollbar-width: thin; -webkit-overflow-scrolling: touch;
+  }
+  .tl-row { padding: .28rem .45rem; font-size: .78rem; }
+  .age-chip { height: 1.4rem; font-size: .72rem; }
+  .mini-badge { font-size: .6rem; }
+  /* 荣誉/伤病徽标只吃剩下的那点宽度，且不换行：一换行这一行就变三行高，
+     时间线的行高参差不齐，限高的滚动区里更显乱。放不下的用渐变吃掉尾巴，
+     反正奖杯在上面那条 chip 里是全的。队名优先，徽标让位。 */
+  .tl-club-name { flex: 0 1 auto; }
+  .tl-badges {
+    flex: 1 1 0; flex-wrap: nowrap; overflow: hidden;
+    -webkit-mask-image: linear-gradient(90deg, #000 78%, transparent);
+    mask-image: linear-gradient(90deg, #000 78%, transparent);
+  }
+
+  /* 决策区：这一屏的主角，但也不能自己占掉半屏 */
+  .col-c .event { margin-top: 0; padding-top: 0; border-top: 0; }
+  .ev-icon { width: 2.3rem; height: 2.3rem; font-size: 1.2rem; }
+  .ev-title { font-size: 1.05rem; }
+  .ev-desc { margin-top: .35rem; font-size: .82rem; line-height: 1.45; }
+  .opts { gap: .4rem; margin-top: .6rem; }
+  .opt { min-height: 4rem; padding: .55rem .5rem; }
+  .opt-label { font-size: .86rem; }
+  .opt-hint { font-size: .68rem; }
+  .opt .crest { width: 1.5rem; height: 1.5rem; margin: 0; }
+  /* 落单占满整行的那张卡改成横着排：竖着排它一个人就占掉一整张卡的高度 */
+  .opts:not([data-n="3"]) > .opt:last-child:nth-child(odd) {
+    flex-flow: row wrap; align-items: center; justify-content: center;
+    min-height: 0; padding: .5rem .55rem; gap: .1rem .45rem;
+  }
+  .opts:not([data-n="3"]) > .opt:last-child:nth-child(odd) .opt-lead { width: 100%; }
+  /* 手机上三列每格只有一百出头，字都得再收一档，不然队名和联赛档次挤成两三行 */
+  .opts[data-n="3"] { gap: .35rem; }
+  .opts[data-n="3"] .opt { padding: .5rem .3rem; gap: .2rem; }
+  .opts[data-n="3"] .opt-lead { font-size: .6rem; }
+  .opts[data-n="3"] .opt-label { font-size: .78rem; line-height: 1.25; }
+  .opts[data-n="3"] .opt-hint { font-size: .62rem; line-height: 1.3; }
+  .opts[data-n="3"] .crest { width: 1.3rem; height: 1.3rem; }
+  .opts-alt { margin-top: .4rem; }
+  .opts-alt .opt { padding: .5rem .55rem; }
+  .roulette { margin-top: .7rem; }
+  .slot { min-height: 3.8rem; padding: .55rem .5rem; }
+  .result { margin-top: .7rem; padding: .65rem .7rem; font-size: .84rem; }
+}
+
+@media (max-width: 380px) {
+  .hero-title { font-size: 1.65rem; }
+  .ending-title { font-size: 1.85rem; }
+  .tl-cols { grid-template-columns: 2.2rem minmax(0,1fr) 2.3rem 2.2rem 2.2rem; }
+  .tl-cols > .hide-xs { display: none; }
+  .player-card { padding: .5rem .55rem; }
+  .player-card .ovr-badge { min-width: 3.7rem; }
+  .player-card .ovr-badge-v { font-size: 1.6rem; }
+  /* 小屏一屏更矮，时间线再让一点，决策还是得整块看得见 */
+  .tl-scroll { max-height: min(25vh, 15rem); }
+  .opt { min-height: 3.7rem; }
+}
+
+/* 统计小图标 */
+.mi { width: .95rem; height: .95rem; vertical-align: -.14em; margin-right: .28rem; }
+.tl-head .mi, .tl-cols .mi { margin-right: 0; width: .88rem; height: .88rem; }
+
+/* 结算页第一行：主卡 + 国家队 + 个人奖项三栏并排（照 copero） */
+@media (min-width: 780px) {
+  .sum-top { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr);
+    gap: .5rem; align-items: stretch; }
+  .sum-top > * { margin: 0 !important; }
+}
+.sum-main { display: flex; flex-direction: column; background: hsl(var(--card));
+  border: 1px solid hsl(var(--border)); border-radius: var(--r-card); padding: 1rem 1.1rem; }
+.sum-main .stat-row { margin-top: auto; border-bottom: 0; padding-bottom: 0; }
+/* 俱乐部卡在宽屏一行四张 */
+@media (min-width: 1000px) { .club-grid { grid-template-columns: repeat(4, 1fr); } }
+
+/* 结算顶部：名字不许断行，主卡在三栏里要留够宽度 */
+.sum-main .ending-eyebrow { margin-bottom: .5rem; letter-spacing: .1em; }
+.sum-name { white-space: nowrap; }
+.sum-hero { align-items: center; gap: .6rem; }
+.sum-hero-main { min-width: 0; }
+@media (min-width: 780px) {
+  .sum-top { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr); }
+}
+/* 队徽默认什么都不加 —— 绝大多数是彩色徽，直接摆在深色面板上最干净。
+   纯黑/极深的那几支（.plate，名单在 crests.js）描一圈白光晕：
+   drop-shadow 跟着 alpha 的形状走，圆徽出圆边、盾徽出盾边，
+   比垫一块白方框强 —— 方框在圆徽后面看着就像背景没抠干净。 */
+img.crest.plate {
+  filter: drop-shadow(0 0 1.2px rgba(255,255,255,.9))
+          drop-shadow(0 0 2.6px rgba(255,255,255,.35));
+}
+.club-card-wash img.crest.plate { filter: grayscale(.35); }
+
+/* ================= 分享弹窗 =================
+   照 copero 那张分享卡：橙色小标题 + 大标题 + 一张可以存下来的卡 +
+   一个开关 + 一排圆按钮。卡片整个画在 canvas 上 ——
+   屏幕上看到的和存下来的是同一张图，不用维护两套排版。 */
+.share-modal { text-align: center; }
+.share-eyebrow {
+  font-size: .66rem; font-weight: 800; letter-spacing: .22em;
+  color: hsl(24 78% 58%); margin-bottom: .35rem;
+}
+.share-title { font-size: 1.4rem; font-weight: 800; letter-spacing: -.02em; margin-bottom: 1.1rem; }
+.share-card-wrap { display: flex; justify-content: center; }
+#share-canvas, #share-img {
+  width: 100%; max-width: 340px; height: auto; display: block;
+  border-radius: var(--r-card);
+}
+/* 微信里长按这张图才会弹「发送给朋友 / 保存图片」。这两条是显式写死的保险：
+   一旦哪天给弹窗加了 user-select: none 或 -webkit-touch-callout: none，
+   长按菜单会连带被吃掉，而且不报任何错。上面也不能盖透明层 ——
+   长按落在遮挡元素上，微信就不认这是一张图。 */
+#share-img {
+  -webkit-touch-callout: default;
+  -webkit-user-select: auto; user-select: auto;
+  pointer-events: auto;
+}
+.share-tip {
+  margin-top: .7rem; text-align: center;
+  font-size: .78rem; color: hsl(var(--muted)); letter-spacing: .02em;
+}
+
+/* 开关：整块可点，方块滑轨照全站的小圆角来，不用胶囊 */
+.share-toggle {
+  display: inline-flex; align-items: center; gap: .7rem; cursor: pointer;
+  margin: 1.2rem auto .2rem; padding: .5rem .9rem;
+  border: 1px solid hsl(var(--border)); border-radius: 999px;
+  background: hsl(var(--row)); font-size: .84rem; font-weight: 650;
+}
+.share-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.share-toggle i {
+  position: relative; width: 2.1rem; height: 1.15rem; border-radius: 999px;
+  background: hsl(var(--btn-bg)); transition: background .18s;
+}
+.share-toggle i::after {
+  content: ""; position: absolute; top: .17rem; left: .2rem;
+  width: .8rem; height: .8rem; border-radius: 999px;
+  background: hsl(var(--faint)); transition: transform .18s, background .18s;
+}
+.share-toggle input:checked + i { background: hsl(var(--accent) / .45); }
+.share-toggle input:checked + i::after {
+  transform: translateX(.9rem); background: hsl(var(--accent));
+}
+
+.share-actions { display: flex; justify-content: center; gap: .7rem; margin-top: 1.1rem; }
+.share-btn {
+  display: grid; place-items: center; width: 3rem; height: 3rem;
+  border: 1px solid hsl(var(--border-strong)); border-radius: 999px;
+  background: transparent; color: hsl(var(--muted)); cursor: pointer; transition: all .15s;
+}
+.share-btn:hover { border-color: hsl(var(--accent)); color: hsl(var(--accent)); }
+.share-btn svg {
+  width: 1.2rem; height: 1.2rem; fill: none; stroke: currentColor;
+  stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+}
+/* 不支持的按钮直接不显示，别给一个点了没反应的东西 */
+.share-btn.hidden { display: none; }

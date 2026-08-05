@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>足一把-生涯模拟器 - 中国球员生涯</title>
+  <meta name="description" content="从足校到退役，把一个中国球员的一生走一遍。选择、代价，和一份没人替你写的履历。" />
+  <meta name="theme-color" content="#0e100f" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚽</text></svg>" />
+</head>
+<body>
+  <div id="root"></div>
+  <!-- Engine scripts: loaded synchronously before React.
+       Order matters: data/events must come before sim.js (sim reads window.DATA/EVENTS at init) -->
+  <script src="/data.js"></script>
+  <script src="/events.js"></script>
+  <script src="/sim.js"></script>
+  <script src="/crests.js"></script>
+  <script src="/qr.js"></script>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>
