@@ -30,10 +30,12 @@ export function TrophyIcon() {
   );
 }
 
-/** Map an OVR value to a CSS tier class name (bronze/silver/gold/plat/''). */
+/** Map an OVR value to a CSS tier class name (''/bronze/silver/gold/plat).
+ *  <60 → no tier class (falls back to the dark base gradient, ~40 OVR),
+ *  60-69 → bronze/copper, 70-79 → silver, 80-87 → gold, ≥88 → platinum. */
 export function getOVRTier(ovr) {
-  if (ovr < 60) return 'bronze';
-  if (ovr < 70) return '';
+  if (ovr < 60) return '';
+  if (ovr < 70) return 'bronze';
   if (ovr < 80) return 'silver';
   if (ovr < 88) return 'gold';
   return 'plat';

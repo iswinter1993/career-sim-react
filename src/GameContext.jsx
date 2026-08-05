@@ -44,6 +44,7 @@ function gameReducer(state, action) {
     case 'START_CAREER': {
       const seed = action.seed || String(Math.floor(Math.random() * 1000000000));
       const simState = SIM.newState(state.mode, state.identity, seed);
+      SIM.initAttributes(state.identity, seed);
       return {
         ...state,
         phase: PHASES.CAREER,
@@ -59,6 +60,11 @@ function gameReducer(state, action) {
       SIM.nextStep();
       const simState = SIM.state();
       const pending = simState?.pending;
+
+      // Sync attribute module with engine state
+      if (simState?.ovr != null && simState?.age != null) {
+        SIM.tickAttributes(simState.ovr, simState.age, simState.pos);
+      }
 
       // Engine may reach summary phase immediately (forced retirement by age).
       if (simState?.phase === 'summary') {

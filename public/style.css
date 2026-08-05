@@ -290,7 +290,7 @@ body.no-actionbar { padding-bottom: 2rem; }
   to { box-shadow: 0 0 0 15px hsl(var(--failure)/0) } }
 
 .club-bar {
-  flex: 1; min-width: 0; position: relative; overflow: hidden;
+  flex: 1; min-width: 0; position: relative;
   display: flex; align-items: center; gap: .7rem;
   padding: .65rem .85rem; border-radius: 12px;
   background: hsl(var(--card)); border: 1px solid hsl(var(--border));
@@ -1068,3 +1068,173 @@ img.crest.plate {
 }
 /* 不支持的按钮直接不显示，别给一个点了没反应的东西 */
 .share-btn.hidden { display: none; }
+
+/* ---- Attributes Modal (redesigned) ---- */
+.attrs-modal-new {
+  max-width: 54rem;
+}
+
+/* Header */
+.am-header {
+  display: flex; align-items: baseline; gap: .6rem; margin-bottom: 1rem;
+}
+.am-title {
+  font-size: 1.15rem; font-weight: 750;
+}
+.am-pos {
+  font-size: .7rem; font-weight: 750; letter-spacing: .08em;
+  padding: .12rem .45rem; border-radius: 999px;
+  background: hsl(var(--accent) / .14); color: hsl(var(--accent));
+}
+
+/* Body: left radar panel + right attributes panel */
+.am-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 1.1rem;
+  margin-bottom: 1rem;
+}
+
+/* Left: two radar cards stacked */
+.am-left {
+  display: flex; flex-direction: column; gap: .85rem;
+}
+
+.am-radar-card {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border)); border-radius: var(--r-card);
+  padding: .6rem .5rem .3rem;
+}
+.am-radar-title {
+  font-size: .68rem; font-weight: 750; letter-spacing: .1em;
+  text-transform: uppercase; color: hsl(var(--faint));
+  text-align: center; margin-bottom: .1rem;
+}
+.radar-svg {
+  display: block; width: 100%; height: auto; max-height: 210px;
+}
+
+/* Right: three category blocks */
+.am-right {
+  display: flex; flex-direction: column; gap: .65rem;
+}
+
+/* Category block */
+.cat-block {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border)); border-radius: var(--r-card);
+  padding: .55rem .75rem;
+}
+
+.cat-block-head {
+  display: flex; align-items: center; gap: .45rem; margin-bottom: .45rem;
+  padding-bottom: .35rem; border-bottom: 1px solid hsl(var(--border-weak));
+}
+
+.cat-block-icon {
+  width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0;
+}
+
+.cat-block-name {
+  font-size: .72rem; font-weight: 750; letter-spacing: .08em;
+  text-transform: uppercase; color: hsl(var(--faint));
+}
+
+.cat-block-score {
+  font-size: 1.05rem; font-weight: 800; font-variant-numeric: tabular-nums; margin-left: auto;
+}
+
+.cat-block--tech .cat-block-score { color: #27ae60; }
+.cat-block--phys .cat-block-score { color: #e67e22; }
+.cat-block--mental .cat-block-score { color: #3498db; }
+
+/* Cards grid inside each category */
+.cat-block-cards {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: .35rem .6rem;
+}
+
+/* Single attribute card */
+.acard {
+  padding: .2rem 0;
+}
+
+.acard-top {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: .15rem;
+}
+
+.acard-label {
+  font-size: .75rem; color: hsl(var(--text));
+}
+
+.acard-val {
+  font-size: .78rem; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+
+.acard-track {
+  height: .22rem; border-radius: 999px;
+  background: hsl(var(--border-weak) / .6);
+  overflow: hidden;
+}
+
+.acard-fill {
+  height: 100%; border-radius: 999px;
+  transition: width .35s ease;
+}
+
+/* Footer: OVR comparison */
+.am-footer {
+  display: flex; align-items: baseline; justify-content: center; gap: .5rem;
+  padding: .65rem 0 0;
+  border-top: 1px solid hsl(var(--border));
+  font-variant-numeric: tabular-nums;
+}
+
+.am-ovr-item { display: flex; align-items: baseline; gap: .3rem; }
+
+.am-ovr-lab {
+  font-size: .7rem; letter-spacing: .06em;
+  text-transform: uppercase; color: hsl(var(--faint));
+}
+
+.am-ovr-num {
+  font-size: 1.15rem; font-weight: 800; color: hsl(var(--gold1));
+}
+
+.am-ovr-num--eng { color: hsl(var(--text)); }
+
+.am-ovr-sep { color: hsl(var(--border)); font-size: .85rem; }
+
+.am-ovr-diff {
+  font-size: .72rem; font-weight: 650; color: hsl(var(--muted));
+  margin-left: .1rem;
+}
+
+/* Narrow: stack vertically */
+@media (max-width: 700px) {
+  .am-body {
+    grid-template-columns: 1fr;
+  }
+  .cat-block-cards {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 420px) {
+  .cat-block-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- OVR Badge clickable (no scale — parent overflow:hidden clips it) ---- */
+.ovr-badge-clickable {
+  cursor: pointer;
+  transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+}
+
+.ovr-badge-clickable:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 0 3px rgba(255,215,94,.55), 0 0 22px rgba(255,200,60,.45);
+  filter: brightness(1.15);
+}

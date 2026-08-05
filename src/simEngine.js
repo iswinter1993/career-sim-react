@@ -6,6 +6,8 @@
 // intentionally thin because the engine owns all game logic; changing
 // that would mean forking the obfuscated engine scripts.
 
+import * as ATTRS from './attributes';
+
 const SIM = {
   get() {
     return window.SIM;
@@ -155,6 +157,40 @@ const SIM = {
 
   getEvents() {
     return window.EVENTS || [];
+  },
+
+  // --- Attribute system bridge (Ticket 02) ---
+
+  initAttributes(identity, seed) {
+    return ATTRS.initAttributes(identity, seed);
+  },
+
+  tickAttributes(currentOvr, age, pos) {
+    return ATTRS.tickAttributes(currentOvr, age, pos);
+  },
+
+  getAttributes() {
+    return ATTRS.getAttributes();
+  },
+
+  getCategory(attrs, category) {
+    return ATTRS.getCategory(attrs, category);
+  },
+
+  getWeights(pos) {
+    return ATTRS.getWeights(pos);
+  },
+
+  getOVRFromAttributes(attrs, pos) {
+    return ATTRS.getOVRFromAttributes(attrs, pos);
+  },
+
+  getPotential(attrs) {
+    return ATTRS.getPotential(attrs);
+  },
+
+  getDevCurve(attrs) {
+    return ATTRS.getDevCurve(attrs);
   },
 };
 

@@ -3,33 +3,53 @@ import { useGame } from '../GameContext';
 import SIM from '../simEngine';
 import Crest from './Crest';
 import { PitchIcon, StarIcon, TrophyIcon, getOVRTier } from './Icons';
+import AttributesModal from './AttributesModal';
+import AnimatedNumber from './AnimatedNumber';
 
-function OVRBadge({ ovr, prevOvr }) {
+function OVRBadge({ ovr, prevOvr, onClick }) {
   const tier = getOVRTier(ovr);
 
+  // Green pulse when OVR rises, red pulse when it falls (compared to last season).
   let anim = '';
   if (prevOvr !== null && prevOvr !== undefined) {
     anim = ovr > prevOvr ? 'up' : ovr < prevOvr ? 'down' : '';
   }
 
+  // key={ovr} forces React to remount the whole badge on every OVR change,
+  // which re-triggers the up/down CSS animation AND resets the AnimatedNumber
+  // so it rolls from prevOvr. Without it, a sequence of consecutive rises
+  // (e.g. 76→77→78→79→80) keeps the same class and the browser never
+  // restarts the pulse animation — so it stops showing around 80.
   return (
-    <div className={`ovr-badge ${tier} ${anim}`}>
+    <div key={ovr} className={`ovr-badge ovr-badge-clickable ${tier} ${anim}`} onClick={onClick} title="查看球员属性">
       <div className="ovr-badge-l">OVR</div>
-      <div className="ovr-badge-v">{Math.round(ovr)}</div>
+      <div className="ovr-badge-v">
+        <AnimatedNumber value={ovr} initial={prevOvr} duration={800} formatter={(v) => Math.round(v)} />
+      </div>
     </div>
   );
 }
 
-function ClubBar({ team, playerName, pos, role, seasonWage, prevOvr }) {
+function ClubBar({ team, playerName, pos, role, seasonWage, onOVRClick }) {
   const ovr = Math.round(SIM.state()?.ovr || 0);
   const roleObj = team ? SIM.getRole(role) : null;
   const roleName = roleObj?.name || role || '';
+
+  // Track the OVR from the previous render to detect rise/fall. Using a ref
+  // (updated in an effect) rather than the engine's `seasons` array: the engine
+  // updates state.ovr and pushes season records at different times, so reading
+  // seasons[length-2] gave a stale/wrong "previous OVR" that masked declines.
+  const prevOvrRef = useRef(null);
+  const prevOvr = prevOvrRef.current;
+  useEffect(() => {
+    prevOvrRef.current = ovr;
+  });
 
   const crestEl = team ? <Crest team={team} size="lg" /> : null;
 
   return (
     <div className="club-bar">
-      <OVRBadge ovr={ovr} prevOvr={prevOvr} />
+      <OVRBadge ovr={ovr} prevOvr={prevOvr} onClick={onOVRClick} />
       <div className="club-bar-main">
         <div className="tag-row">
           <span className="tag blue">{pos || '—'}</span>
@@ -494,6 +514,7 @@ function EventPanel({ pendingEvent, pendingResult, onChoose, onContinue }) {
 export default function CareerView() {
   const { state, dispatch } = useGame();
   const { simState, pendingResult, spinning } = state;
+  const [showAttributes, setShowAttributes] = useState(false);
 
   if (!simState) {
     return <div className="view">加载中...</div>;
@@ -502,7 +523,6 @@ export default function CareerView() {
   const team = SIM.curTeam();
   const league = SIM.curLeague();
   const seasons = simState.seasons || [];
-  const prevSeason = seasons.length > 1 ? seasons[seasons.length - 2] : null;
 
   const handleSpinComplete = () => {
     dispatch({ type: 'SPIN_COMPLETE' });
@@ -591,7 +611,7 @@ export default function CareerView() {
                 pos={simState.pos}
                 role={simState.role}
                 seasonWage={simState.seasonWage}
-                prevOvr={prevSeason?.ovr}
+                onOVRClick={() => setShowAttributes(true)}
               />
               <StatRow stats={simState.totals} />
               <Bars simState={simState} />
@@ -624,6 +644,7 @@ export default function CareerView() {
             )}
           </div>
         </div>
+        {showAttributes && <AttributesModal onClose={() => setShowAttributes(false)} />}
       </div>
     </section>
   );
