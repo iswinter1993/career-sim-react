@@ -181,15 +181,30 @@ export default function SummaryView() {
           {profile.awards > 0 ? (
             <>
               <div className="sum-card-title">{profile.awards} 项</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.5rem' }}>
-                {Object.entries(SIM.AWARDS || {}).map(([key, aw]) => {
-                  const count = profile.award(key) || 0;
-                  if (count > 0) {
-                    return <span key={key} className="chip award">×{count} {aw}</span>;
-                  }
-                  return null;
-                })}
-              </div>
+              {/* state.awards is [{name: '中超金靴', age: 24}, ...]. Group by name
+                  for a compact chip list. Note: profile.award() expects the CHINESE
+                  name (e.g. '中超金靴'), not the AWARDS map key (e.g. 'cslboot'). */}
+              {(() => {
+                const byName = {};
+                (simState?.awards || []).forEach((a) => {
+                  const n = typeof a === 'string' ? a : a.name;
+                  if (!byName[n]) byName[n] = { count: 0, ages: [] };
+                  byName[n].count++;
+                  if (typeof a === 'object' && a.age) byName[n].ages.push(a.age);
+                });
+                return (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.5rem' }}>
+                    {Object.entries(byName).map(([name, info]) => (
+                      <span key={name} className="chip award">
+                        ×{info.count} {name}
+                        {info.ages.length > 0 && (
+                          <i style={{ fontStyle: 'normal', opacity: 0.75 }}> · {info.ages.join('/')}岁</i>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
             </>
           ) : (
             <div className="case-empty">奖杯柜是空的</div>

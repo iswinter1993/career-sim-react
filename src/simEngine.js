@@ -161,8 +161,8 @@ const SIM = {
 
   // --- Attribute system bridge (Ticket 02) ---
 
-  initAttributes(identity, seed) {
-    return ATTRS.initAttributes(identity, seed);
+  initAttributes(identity, seed, currentOvr) {
+    return ATTRS.initAttributes(identity, seed, currentOvr);
   },
 
   tickAttributes(currentOvr, age, pos) {

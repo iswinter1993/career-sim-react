@@ -44,7 +44,9 @@ function gameReducer(state, action) {
     case 'START_CAREER': {
       const seed = action.seed || String(Math.floor(Math.random() * 1000000000));
       const simState = SIM.newState(state.mode, state.identity, seed);
-      SIM.initAttributes(state.identity, seed);
+      // Anchor the attribute baseline to the engine's starting OVR (age 16) so
+      // the first NEXT_STEP tick computes a real delta instead of 0.
+      SIM.initAttributes(state.identity, seed, simState?.ovr);
       return {
         ...state,
         phase: PHASES.CAREER,

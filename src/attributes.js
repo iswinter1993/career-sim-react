@@ -54,10 +54,10 @@ function mulberry32(a) {
 /** Every sub-attribute: key → { label (Chinese display name), category }. */
 export const SUB_ATTRS = {
   // 技术 Technical (6)
-  dribbling:   { label: '控球',   cat: 'tech' },
+  dribbling:   { label: '盘带',   cat: 'tech' },
   passing:     { label: '传球',   cat: 'tech' },
   shooting:    { label: '射门',   cat: 'tech' },
-  ballControl: { label: '盘带',   cat: 'tech' },
+  ballControl: { label: '控球',   cat: 'tech' },
   tackling:    { label: '抢断',   cat: 'tech' },
   setPieces:   { label: '定位球', cat: 'tech' },
   // 身体 Physical (5)
@@ -301,9 +301,12 @@ export function getDevCurve(attrs) {
  *
  * @param {object} identity — { name, pos, … }
  * @param {string} seed    — player-chosen or system-generated seed
+ * @param {number} [currentOvr] — engine OVR at creation (age 16 baseline). When
+ *   provided, the first tickAttributes call computes a real delta instead of 0,
+ *   so the age-16→17 growth is not lost.
  * @returns {object} the fresh attrs object (also stored internally)
  */
-export function initAttributes(identity, seed) {
+export function initAttributes(identity, seed, currentOvr) {
   const pos = identity?.pos || 'CM';
   const weights = _posWeights(pos);
   const subW = weights.sub;
@@ -347,7 +350,8 @@ export function initAttributes(identity, seed) {
   }
 
   _currentAttrs = attrs;
-  _lastEngineOvr = null;
+  // Anchor the engine-OVR baseline so the first tick gets a real delta.
+  _lastEngineOvr = currentOvr != null ? currentOvr : null;
   return attrs;
 }
 
