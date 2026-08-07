@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useGame } from '../GameContext';
+import { CAREER } from '../stateMachine';
 import SIM from '../simEngine';
 import Crest from './Crest';
 import { PitchIcon, StarIcon, TrophyIcon, getOVRTier } from './Icons';
@@ -512,8 +513,8 @@ function EventPanel({ pendingEvent, pendingResult, onChoose, onContinue }) {
 }
 
 export default function CareerView() {
-  const { state, dispatch } = useGame();
-  const { simState, pendingResult, spinning } = state;
+  const { state, dispatch, careerState } = useGame();
+  const { simState, spinning } = state;
   const [showAttributes, setShowAttributes] = useState(false);
 
   if (!simState) {
@@ -528,65 +529,28 @@ export default function CareerView() {
     dispatch({ type: 'SPIN_COMPLETE' });
   };
 
+  // All decision-making is now delegated to the state machine.
+  // Components dispatch simple events; the reducer + stateMachine.js
+  // handle routing based on the current sub-state.
+
   const handleChoose = (index) => {
-    if (simState?.phase === 'summary') {
-      dispatch({ type: 'GO_SUMMARY', reason: 'end' });
-      return;
-    }
-    if (pendingResult) {
-      dispatch({ type: 'CONTINUE' });
-      return;
-    }
-
-    const pending = simState?.pending;
-    if (!pending) {
-      dispatch({ type: 'NEXT_STEP' });
-      return;
-    }
-
-    if (pending.type === 'event' || pending.type === 'random') {
-      dispatch({ type: 'CHOOSE_EVENT', index });
-    } else if (pending.type === 'academy' || pending.type === 'transfer') {
-      if (index === 'retire') {
-        dispatch({ type: 'CHOOSE_RETIRE' });
-      } else if (index === 'stay') {
-        dispatch({ type: 'CHOOSE_STAY' });
-      } else if (index === 'end') {
-        dispatch({ type: 'GO_SUMMARY', reason: '无处可去' });
-      } else {
-        dispatch({ type: 'CHOOSE_EVENT', index });
-      }
-    } else if (pending.type === 'recap' || pending.type === 'report') {
-      dispatch({ type: 'CONTINUE' });
-    } else if (pending.type === 'end') {
-      dispatch({ type: 'GO_SUMMARY', reason: '无处可去' });
-    }
+    dispatch({ type: 'CHOOSE', index });
   };
 
   const handleContinue = () => {
-    // Engine may have reached summary phase while retaining a pending
-    // (e.g. report/recap). If phase is summary, go directly to summary view.
-    if (simState?.phase === 'summary') {
-      dispatch({ type: 'GO_SUMMARY', reason: 'end' });
-      return;
-    }
-    if (pendingResult) {
-      dispatch({ type: 'CONTINUE' });
-    } else {
-      dispatch({ type: 'NEXT_STEP' });
-    }
+    dispatch({ type: 'CONTINUE' });
   };
 
-  // Auto-advance if no pending event
-  const needsAdvance = !simState?.pending;
+  // Auto-advance when no pending event (career.idle state)
+  const needsAdvance = careerState === CAREER.IDLE;
   useEffect(() => {
     if (needsAdvance) {
       const timer = setTimeout(() => {
-        dispatch({ type: 'NEXT_STEP' });
+        dispatch({ type: 'CONTINUE' });
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [needsAdvance, simState?.pending]);
+  }, [needsAdvance]);
 
   const handleRestart = () => {
     if (window.confirm('确定要重开一局吗？')) {
@@ -637,7 +601,7 @@ export default function CareerView() {
             ) : (
               <EventPanel
                 pendingEvent={simState?.pending}
-                pendingResult={pendingResult}
+                pendingResult={state.pendingResult}
                 onChoose={handleChoose}
                 onContinue={handleContinue}
               />

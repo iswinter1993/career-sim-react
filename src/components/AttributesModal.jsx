@@ -3,7 +3,7 @@ import { useGame } from '../GameContext';
 import SIM from '../simEngine';
 import * as ATTRS from '../attributes';
 
-const { SUB_ATTRS, CATEGORIES, CAT_LABELS } = ATTRS;
+const { SUB_ATTRS, CATEGORIES, CAT_LABELS, getKeysByCategory } = ATTRS;
 
 const CAT_COLORS = {
   tech:   { bar: '#27ae60', bg: 'rgba(39,174,96,.16)', accent: 'rgba(39,174,96,.08)' },
@@ -25,22 +25,22 @@ function hexVertices(cx, cy, r) {
 }
 
 function HexRadar({ attrs }) {
-  const techKeys = Object.keys(SUB_ATTRS).filter((k) => SUB_ATTRS[k].cat === 'tech');
+  const techKeys = getKeysByCategory('tech');
   const labels = techKeys.map((k) => SUB_ATTRS[k].label);
   const SIZE = 220, CX = SIZE / 2, CY = SIZE / 2, MAX_R = 80;
   const verts = hexVertices(CX, CY, MAX_R);
 
   const dataPts = verts.map((v, i) => {
-    const val = Math.max(0, Math.min(20, attrs?.[techKeys[i]] ?? 0));
-    const r = val / 20;
+    const val = Math.max(0, Math.min(100, attrs?.[techKeys[i]] ?? 0));
+    const r = val / 100;
     return { x: CX + (v.x - CX) * r, y: CY + (v.y - CY) * r };
   });
   const dLine = dataPts.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ') + ' Z';
 
   return (
     <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="radar-svg" aria-label="技术六维雷达图">
-      {[5, 10, 15, 20].map((r) => {
-        const rv = verts.map((v) => ({ x: CX + (v.x - CX) * r / 20, y: CY + (v.y - CY) * r / 20 }));
+      {[20, 40, 60, 80, 100].map((r) => {
+        const rv = verts.map((v) => ({ x: CX + (v.x - CX) * r / 100, y: CY + (v.y - CY) * r / 100 }));
         const d = rv.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ') + ' Z';
         return <path key={r} d={d} fill="none" stroke="hsl(var(--border))" strokeWidth="0.7" />;
       })}
@@ -71,7 +71,7 @@ function HexRadar({ attrs }) {
 
 function TriRadar({ attrs }) {
   const avgs = CATEGORIES.map((cat) => {
-    const keys = Object.keys(SUB_ATTRS).filter((k) => SUB_ATTRS[k].cat === cat);
+    const keys = getKeysByCategory(cat);
     return Math.round(keys.reduce((s, k) => s + (attrs?.[k] ?? 0), 0) / (keys.length || 1) * 10) / 10;
   });
   const SIZE = 200, CX = SIZE / 2, CY = SIZE / 2 + 4, MAX_R = 74;
@@ -79,15 +79,15 @@ function TriRadar({ attrs }) {
   const verts = angles.map((a) => ({ x: CX + MAX_R * Math.cos(a), y: CY - MAX_R * Math.sin(a) }));
 
   const dataPts = verts.map((v, i) => {
-    const r = Math.max(0, Math.min(20, avgs[i])) / 20;
+    const r = Math.max(0, Math.min(100, avgs[i])) / 100;
     return { x: CX + (v.x - CX) * r, y: CY + (v.y - CY) * r };
   });
   const dLine = dataPts.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ') + ' Z';
 
   return (
     <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="radar-svg" aria-label="能力三角雷达图">
-      {[5, 10, 15, 20].map((r) => {
-        const rv = verts.map((v) => ({ x: CX + (v.x - CX) * r / 20, y: CY + (v.y - CY) * r / 20 }));
+      {[20, 40, 60, 80, 100].map((r) => {
+        const rv = verts.map((v) => ({ x: CX + (v.x - CX) * r / 100, y: CY + (v.y - CY) * r / 100 }));
         const d = rv.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ') + ' Z';
         return <path key={r} d={d} fill="none" stroke="hsl(var(--border))" strokeWidth="0.7" />;
       })}
@@ -117,8 +117,8 @@ function TriRadar({ attrs }) {
 // ---------------------------------------------------------------------------
 
 function AttrCard({ label, value, color }) {
-  const pct = Math.round((value / 20) * 100);
-  const c = value >= 14 ? '#f0c040' : color;
+  const pct = Math.round((value / 100) * 100);
+  const c = value >= 70 ? '#f0c040' : color;
   return (
     <div className="acard">
       <div className="acard-top">

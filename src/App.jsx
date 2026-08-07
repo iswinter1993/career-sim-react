@@ -3,6 +3,7 @@ import { GameProvider, useGame } from './GameContext';
 import IntroView from './components/IntroView';
 import IdentityView from './components/IdentityView';
 import CareerView from './components/CareerView';
+import MatchView from './components/MatchView';
 import SummaryView from './components/SummaryView';
 import HelpModal from './components/HelpModal';
 import NewsModal from './components/NewsModal';
@@ -57,6 +58,7 @@ function GameShell() {
   useEffect(() => {
     document.body.classList.toggle('no-actionbar', phase !== PHASES.IDENTITY);
     document.body.classList.toggle('in-career', phase === PHASES.CAREER);
+    document.body.classList.toggle('in-match', phase === PHASES.MATCH);
   }, [phase, PHASES]);
 
   return (
@@ -66,6 +68,7 @@ function GameShell() {
         {phase === PHASES.INTRO && <IntroView />}
         {phase === PHASES.IDENTITY && <IdentityView />}
         {phase === PHASES.CAREER && <CareerView />}
+        {phase === PHASES.MATCH && <MatchView />}
         {phase === PHASES.SUMMARY && <SummaryView />}
       </main>
       <Footer />

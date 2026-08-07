@@ -11,7 +11,7 @@
 //   getCategory(attrs, cat)  → weighted integer for tech/phys/mental
 //   getWeights(pos)          → { sub, cat } position weight matrices
 //   getOVRFromAttributes(attrs, pos) → approximate OVR (0-99)
-//   getPotential(attrs)      → hidden potential value (0-20)
+//   getPotential(attrs)      → hidden potential value (0-100)
 //   getDevCurve(attrs)       → 'early' | 'steady' | 'late'
 //   initAttributes(identity, seed)   → fresh attrs, stores internally
 //   tickAttributes(currentOvr, age, pos, attrs) → updated attrs
@@ -215,22 +215,30 @@ export function getAttributes() {
  * Weighted integer value for one category.
  * @param {object} attrs — the attrs object from getAttributes()
  * @param {'tech'|'phys'|'mental'} category
- * @returns {number} 0-20
+ * @returns {number} 0-100
  */
 export function getCategory(attrs, category) {
   if (!attrs) return 0;
   const weights = _posWeights(attrs._pos);
   const subW = weights.sub;
+  const keys = getKeysByCategory(category);
   let weightedSum = 0;
   let totalWeight = 0;
-  for (const key of SUB_KEYS) {
-    if (SUB_ATTRS[key].cat === category) {
-      const w = subW[key] || 1;
-      weightedSum += (attrs[key] || 0) * w;
-      totalWeight += w;
-    }
+  for (const key of keys) {
+    const w = subW[key] || 1;
+    weightedSum += (attrs[key] || 0) * w;
+    totalWeight += w;
   }
   return totalWeight > 0 ? Math.round(weightedSum / totalWeight) : 0;
+}
+
+/**
+ * Return all sub-attribute keys belonging to a given category.
+ * @param {'tech'|'phys'|'mental'} category
+ * @returns {string[]}
+ */
+export function getKeysByCategory(category) {
+  return SUB_KEYS.filter((k) => SUB_ATTRS[k].cat === category);
 }
 
 /**
@@ -245,9 +253,9 @@ export function getWeights(pos) {
 /**
  * Approximate OVR (0-99) derived from sub-attributes and position weights.
  *
- * The category weights and a 5× scalar map the 0-20 category scores into
- * the engine's 0-99 OVR space.  This is deliberately an *approximation* —
- * it tracks the engine's trend but won't match exactly.
+ * Category scores are now 0-100, so the scale factor is 1× instead of 5×.
+ * This is deliberately an *approximation* — it tracks the engine's trend
+ * but won't match exactly.
  *
  * @param {object} attrs
  * @param {string} [pos] — falls back to attrs._pos
@@ -259,7 +267,7 @@ export function getOVRFromAttributes(attrs, pos) {
   const catW = weights.cat;
   let ovr = 0;
   for (const cat of CATEGORIES) {
-    ovr += getCategory(attrs, cat) * (catW[cat] || 0.33) * 5;
+    ovr += getCategory(attrs, cat) * (catW[cat] || 0.33);
   }
   return Math.round(Math.min(99, Math.max(0, ovr)));
 }
@@ -267,7 +275,7 @@ export function getOVRFromAttributes(attrs, pos) {
 /**
  * Hidden potential value set at creation time.
  * @param {object} attrs
- * @returns {number|null} 0-20, or null if not initialised
+ * @returns {number|null} 0-100, or null if not initialised
  */
 export function getPotential(attrs) {
   return attrs ? attrs._potential : null;
@@ -296,8 +304,8 @@ export function getDevCurve(attrs) {
  *   1. Seed the PRNG with seed + name + position.
  *   2. Roll devCurve (early 30% / steady 50% / late 20%).
  *   3. Roll potential (range varies by devCurve).
- *   4. For each sub-attribute: base = posWeight × 1.5, then ±4 uniform jitter,
- *      clamped to [0, 20].
+ *   4. For each sub-attribute: base = posWeight × 7.5, then ±20 uniform jitter,
+ *      clamped to [0, 100].
  *
  * @param {object} identity — { name, pos, … }
  * @param {string} seed    — player-chosen or system-generated seed
@@ -326,27 +334,27 @@ export function initAttributes(identity, seed, currentOvr) {
     devCurve = 'late';
   }
 
-  // --- potential roll (higher floor for late bloomers) ---
+  // --- potential roll (higher floor for late bloomers, now 0-100) ---
   let potBase;
   switch (devCurve) {
-    case 'early':  potBase = 10 + _rng() * 7; break;  // 10–17
-    case 'steady': potBase = 11 + _rng() * 8; break;  // 11–19
-    case 'late':   potBase = 13 + _rng() * 7; break;  // 13–20
-    default:       potBase = 12 + _rng() * 7; break;
+    case 'early':  potBase = 50 + _rng() * 35; break;  // 50-85
+    case 'steady': potBase = 55 + _rng() * 40; break;  // 55-95
+    case 'late':   potBase = 65 + _rng() * 35; break;  // 65-100
+    default:       potBase = 60 + _rng() * 35; break;
   }
-  const potential = Math.min(20, Math.round(potBase));
+  const potential = Math.min(100, Math.round(potBase));
 
   // --- initial sub-attribute values ---
   const attrs = { _pos: pos, _potential: potential, _devCurve: devCurve };
 
   for (const key of SUB_KEYS) {
     const w = subW[key] || 5;
-    // Base anchored to position weight: weight 10 → ~15, weight 2 → ~3
-    const base = w * 1.5;
-    // Uniform jitter of ±4 to make different seeds feel genuinely different
-    const jitter = (_rng() - 0.5) * 8;
+    // Base anchored to position weight: weight 10 → ~75, weight 2 → ~15
+    const base = w * 7.5;
+    // Uniform jitter of ±20 to make different seeds feel genuinely different
+    const jitter = (_rng() - 0.5) * 40;
     const raw = base + jitter;
-    attrs[key] = Math.max(0, Math.min(20, Math.round(raw)));
+    attrs[key] = Math.max(0, Math.min(100, Math.round(raw)));
   }
 
   _currentAttrs = attrs;
@@ -426,11 +434,11 @@ export function tickAttributes(currentOvr, age, pos, attrs) {
 
   // --- dampen growth near potential ceiling ---
   if (delta > 0) {
-    const avgAttr = _avgOfVisible(attrs);
+    const avgAttr = _avgOfSubAttrs(attrs);
     const gap = Math.max(0, potential - avgAttr);
-    if (gap < 1)       growthMultiplier *= 0.2;
-    else if (gap < 3)  growthMultiplier *= 0.6;
-    else if (gap < 5)  growthMultiplier *= 0.85;
+    if (gap < 5)       growthMultiplier *= 0.2;
+    else if (gap < 15) growthMultiplier *= 0.6;
+    else if (gap < 25) growthMultiplier *= 0.85;
   }
 
   // --- distribute effective delta across sub-attributes ---
@@ -442,22 +450,22 @@ export function tickAttributes(currentOvr, age, pos, attrs) {
     let totalW = 0;
     for (const key of SUB_KEYS) totalW += subW[key] || 1;
 
-    // Scale: 1 OVR point ≈ 3 sub-attribute units distributed
-    const totalDist = effectiveDelta * 3.0;
+    // Scale: 1 OVR point ≈ 15 sub-attribute units distributed (was 3, ×5 for 0-100)
+    const totalDist = effectiveDelta * 15.0;
 
     for (const key of SUB_KEYS) {
       const w = subW[key] || 1;
       const share = (w / totalW) * totalDist;
       // ±30% per-key jitter so not every attribute moves in lockstep
       const jittered = share * (0.7 + (_rng ? _rng() : Math.random()) * 0.6);
-      attrs[key] = Math.max(0, Math.min(20, Math.round(attrs[key] + jittered)));
+      attrs[key] = Math.max(0, Math.min(100, Math.round(attrs[key] + jittered)));
     }
   }
 
   // --- age-related physical decline ---
   const declineAge = { early: 26, steady: 30, late: 33 }[devCurve] || 28;
   if (age > declineAge) {
-    const rate = (age - declineAge) * 0.08;
+    const rate = (age - declineAge) * 0.4;  // was 0.08, ×5 for 0-100 scale
     for (const key of SUB_KEYS) {
       if (SUB_ATTRS[key].cat === 'phys') {
         attrs[key] = Math.max(0, Math.round(attrs[key] - rate));
@@ -465,11 +473,11 @@ export function tickAttributes(currentOvr, age, pos, attrs) {
     }
   }
 
-  // --- mild mental growth from experience (caps at 20) ---
+  // --- mild mental growth from experience (caps at 100) ---
   for (const key of SUB_KEYS) {
-    if (SUB_ATTRS[key].cat === 'mental' && attrs[key] < 20) {
-      const bump = (_rng ? _rng() : Math.random()) * 0.25;
-      attrs[key] = Math.min(20, attrs[key] + bump);
+    if (SUB_ATTRS[key].cat === 'mental' && attrs[key] < 100) {
+      const bump = (_rng ? _rng() : Math.random()) * 1.25;  // was 0.25, ×5
+      attrs[key] = Math.min(100, attrs[key] + bump);
     }
   }
 
@@ -487,7 +495,7 @@ function _posWeights(pos) {
 }
 
 /** Average of the 15 visible sub-attributes only (excludes _meta keys). */
-function _avgOfVisible(attrs) {
+function _avgOfSubAttrs(attrs) {
   let sum = 0;
   for (const key of SUB_KEYS) {
     sum += attrs[key] || 0;
