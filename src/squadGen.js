@@ -92,28 +92,38 @@ function _generateName() {
 // Position role info
 // ---------------------------------------------------------------------------
 
+// Position role info — all 12 career-selectable positions
+// Engine only supports 8 (GK, CB, LB, RB, CM, LM, RM, ST) but we generate
+// all 12 with proper sub-attribute weights and map CDM/CAM/LW/RW at engine time.
+
 const POSITION_ROLES = {
   GK:  { key: 'GK',  label: '门将' },
   CB:  { key: 'CB',  label: '中后卫' },
   LB:  { key: 'LB',  label: '左后卫' },
   RB:  { key: 'RB',  label: '右后卫' },
+  CDM: { key: 'CDM', label: '后腰' },
   CM:  { key: 'CM',  label: '中场' },
+  CAM: { key: 'CAM', label: '前腰' },
   LM:  { key: 'LM',  label: '左前卫' },
   RM:  { key: 'RM',  label: '右前卫' },
+  LW:  { key: 'LW',  label: '左边锋' },
+  RW:  { key: 'RW',  label: '右边锋' },
   ST:  { key: 'ST',  label: '前锋' },
 };
 
-// Engine-supported positions: GK, CB, LB, RB, CM, LM, RM, ST
-// 4-4-2 default formation: 11 positions
-const FORMATION_442 = [
-  'GK',
-  'RB', 'CB', 'CB', 'LB',
-  'RM', 'CM', 'CM', 'LM',
-  'ST', 'ST',
-];
+// Formation definitions: name → position array (11 starters)
+// Positions are listed in standard order: GK → DEF → MID → ATT
+const FORMATIONS = {
+  '4-4-2':   ['GK', 'RB', 'CB', 'CB', 'LB',    'RM', 'CM', 'CM', 'LM',    'ST', 'ST'],
+  '4-3-3':   ['GK', 'RB', 'CB', 'CB', 'LB',    'CM', 'CM', 'CM',          'RW', 'ST', 'LW'],
+  '4-2-3-1': ['GK', 'RB', 'CB', 'CB', 'LB',    'CDM','CDM',               'RM', 'CAM', 'LM', 'ST'],
+  '3-5-2':   ['GK', 'CB', 'CB', 'CB',          'RM', 'CM', 'CM', 'CM', 'LM',    'ST', 'ST'],
+  '5-3-2':   ['GK', 'RB', 'CB', 'CB', 'CB', 'LB', 'CM', 'CM', 'CM',            'ST', 'ST'],
+};
 
-// Substitutes cover diversity: GK, DEF, MID, MID, ATT
-const DEFAULT_SUB_POSITIONS = ['GK', 'CB', 'CM', 'LM', 'ST'];
+// Default position filler order — used when building substitute slots
+// to ensure positional diversity on the bench
+const SUB_POSITION_POOL = ['GK', 'CB', 'CM', 'LM', 'ST'];
 
 // ---------------------------------------------------------------------------
 // Public API — player generation
@@ -179,12 +189,15 @@ export function generatePlayer(position, qualityMin, qualityMax, overrides) {
  * @param {object} playerIdentity — { name, pos, subAttrs } from the career player
  * @param {number} leagueLevel — 1 (top) to 4 (low); drives quality range
  * @param {string} seed — deterministic seed
- * @returns {{ teamName: string, starters: Array, subs: Array, all: Array }}
+ * @param {string} [formation] — formation key (e.g. '4-4-2', '4-3-3'); defaults to '4-4-2'
+ * @returns {{ teamName: string, starters: Array, subs: Array, all: Array, formation: string }}
  */
-export function buildTeamSquad(playerIdentity, leagueLevel, seed) {
+export function buildTeamSquad(playerIdentity, leagueLevel, seed, formation) {
   setSeed(seed);
 
   const quality = LEAGUE_QUALITY[Math.max(1, Math.min(4, leagueLevel))] || LEAGUE_QUALITY[2];
+  const fm = formation && FORMATIONS[formation] ? formation : '4-4-2';
+  const fmSlots = FORMATIONS[fm];
 
   // Team name
   const teamName = _generateTeamName();
@@ -193,7 +206,7 @@ export function buildTeamSquad(playerIdentity, leagueLevel, seed) {
   const starters = [];
   const usedIds = new Set();
 
-  for (const pos of FORMATION_442) {
+  for (const pos of fmSlots) {
     if (pos === playerPos && starters.filter((s) => s.position === playerPos).length === 0) {
       // Inject the player's player here
       const playerSkills = mapToEngineSkills(playerIdentity.subAttrs, playerPos);
@@ -222,9 +235,9 @@ export function buildTeamSquad(playerIdentity, leagueLevel, seed) {
     }
   }
 
-  // Generate 5 substitutes
+  // Generate 5 substitutes with positional diversity
   const subs = [];
-  for (const pos of DEFAULT_SUB_POSITIONS) {
+  for (const pos of SUB_POSITION_POOL) {
     const sub = generatePlayer(pos, quality[0], quality[1]);
     sub.id = `sub_${pos}_${subs.length}`;
     subs.push(sub);
@@ -232,7 +245,7 @@ export function buildTeamSquad(playerIdentity, leagueLevel, seed) {
 
   const all = [...starters, ...subs];
 
-  return { teamName, starters, subs, all };
+  return { teamName, starters, subs, all, formation: fm };
 }
 
 /**
@@ -241,22 +254,25 @@ export function buildTeamSquad(playerIdentity, leagueLevel, seed) {
  * @param {string} teamName — preset team name
  * @param {number} leagueLevel — 1-4
  * @param {string} seed
- * @returns {{ teamName: string, starters: Array, subs: Array, all: Array }}
+ * @param {string} [formation] — formation key (e.g. '4-4-2', '4-3-3'); defaults to '4-4-2'
+ * @returns {{ teamName: string, starters: Array, subs: Array, all: Array, formation: string }}
  */
-export function buildOpponentSquad(teamName, leagueLevel, seed) {
+export function buildOpponentSquad(teamName, leagueLevel, seed, formation) {
   setSeed(seed);
 
   const quality = LEAGUE_QUALITY[Math.max(1, Math.min(4, leagueLevel))] || LEAGUE_QUALITY[2];
+  const fm = formation && FORMATIONS[formation] ? formation : '4-4-2';
+  const fmSlots = FORMATIONS[fm];
 
   const starters = [];
-  for (const pos of FORMATION_442) {
+  for (const pos of fmSlots) {
     const p = generatePlayer(pos, quality[0], quality[1]);
     p.id = `opp_${pos}_${starters.length}`;
     starters.push(p);
   }
 
   const subs = [];
-  for (const pos of DEFAULT_SUB_POSITIONS) {
+  for (const pos of SUB_POSITION_POOL) {
     const sub = generatePlayer(pos, quality[0], quality[1]);
     sub.id = `oppSub_${pos}_${subs.length}`;
     subs.push(sub);
@@ -264,7 +280,7 @@ export function buildOpponentSquad(teamName, leagueLevel, seed) {
 
   const all = [...starters, ...subs];
 
-  return { teamName, starters, subs, all };
+  return { teamName, starters, subs, all, formation: fm };
 }
 
 // ---------------------------------------------------------------------------
@@ -346,4 +362,4 @@ function _approxOvr(subAttrs, position) {
   return Math.round(Math.min(99, Math.max(0, ovr)));
 }
 
-// Internal helper for _approxOvr uses getWeights from attributes.js
+export { FORMATIONS }; // re-exported for MatchView

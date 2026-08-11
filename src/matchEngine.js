@@ -64,46 +64,36 @@ export const DEFAULT_ITERATIONS = 3000;
 // Player / Team builder helpers
 // ---------------------------------------------------------------------------
 
-// Map extended position codes to engine-supported positions.
-// The engine only understands: GK, CB, LB, RB, CM, LM, RM, ST
-// Our game uses: GK, CB, LB, RB, CDM, CM, CAM, LM, RM, LW, RW, ST
-const ENGINE_POSITION_MAP = {
-  CDM: 'CM',
-  CAM: 'CM',
-  LW:  'LM',
-  RW:  'RM',
-};
-
-/** Engine-compatible starting positions matching the sample initiated_team.json. */
+// Engine-compatible starting positions matching the sample initiated_team.json.
+// Supports all 12 positions: GK, CB, LB, RB, CDM, CM, CAM, LM, RM, LW, RW, ST
 const POSITION_PLACES = {
-  GK: [340, 0],
-  LB: [80,  80],
-  CB: [230, 80],   // alternates with 420 for second CB
-  RB: [600, 80],
-  LM: [80,  270],
-  CM: [230, 270],  // alternates with 420 for second CM
-  RM: [600, 270],
-  ST: [280, 500],  // alternates with 440 for second ST
+  GK:  [340, 0],
+  LB:  [80,  80],
+  CB:  [230, 80],   // alternates with 420 for second CB
+  RB:  [600, 80],
+  CDM: [230, 170],  // deeper than CM, between CB and CM
+  LM:  [80,  270],
+  CM:  [230, 270],  // alternates with 420 for second CM
+  RM:  [600, 270],
+  CAM: [340, 370],  // more advanced than CM, behind the striker
+  LW:  [180, 420],  // wider advanced position
+  RW:  [500, 420],  // wider advanced position
+  ST:  [280, 500],  // alternates with 440 for second ST
 };
 
-/** Alternating x-offset for paired positions (two CBs, two CMs, two STs). */
+/** Alternating x-offset for paired positions (two CBs, two CMs, two STs, two CDMs). */
 const PAIRED_OFFSET_X = {
-  CB: 190,  // 230 → 420
-  CM: 190,  // 230 → 420
-  ST: 160,  // 280 → 440
+  CB:  190,  // 230 → 420
+  CM:  190,  // 230 → 420
+  CDM: 190,  // 230 → 420
+  ST:  160,  // 280 → 440
 };
 
-// Track pairing counter so two CBs / two CMs / two STs split left/right
+// Track pairing counter so two CBs / two CMs / two CDMs / two STs split left/right
 const _pairCount = {};
 
-function _enginePosFor(p) {
-  const raw = p.position || 'CM';
-  // Map extended positions to engine-supported ones
-  return ENGINE_POSITION_MAP[raw] || raw;
-}
-
 function _placementFor(p) {
-  const pos = _enginePosFor(p);
+  const pos = p.position || 'CM';
   const base = POSITION_PLACES[pos] || [340, 300];
 
   // Paired position: alternate x so two same-position players spread out
@@ -122,6 +112,7 @@ function _placementFor(p) {
 export function resetPlacementCounters() {
   _pairCount.CB  = 0;
   _pairCount.CM  = 0;
+  _pairCount.CDM = 0;
   _pairCount.ST  = 0;
 }
 
@@ -133,11 +124,10 @@ export function resetPlacementCounters() {
  */
 export function buildPlayerJson(p) {
   const skills = p.engineSkills || {};
-  const enginePos = _enginePosFor(p);
   const [px, py] = _placementFor(p);
   return {
     name: p.name || p.id,
-    position: enginePos,
+    position: p.position || 'CM',
     rating: String(p.ovr || 50),
     skill: {
       passing:        String(skills.passing ?? 50),
@@ -188,24 +178,100 @@ export function buildTeamJson(teamName, players) {
 // Core API wrappers
 // ---------------------------------------------------------------------------
 
+// Mentality → engine intent mapping
+// The engine's team.intent controls AI aggression level
+const MENTALITY_INTENT = {
+  ultra_attack: 'attack',
+  attack:       'attack',
+  balanced:     'balanced',
+  defend:       'defend',
+  ultra_defend: 'defend',
+};
+
+/**
+ * Apply mentality modifiers to a team's players before match creation.
+ * Higher mentality → boosted offensive skills, lowered defensive skills.
+ * Lower mentality → boosted defensive skills, lowered offensive skills.
+ *
+ * @param {object} team — engine-ready team object
+ * @param {string} mentalityKey — one of MENTALITY_INTENT keys
+ * @returns {object} modified team (shallow clone)
+ */
+export function applyMentalityToTeam(team, mentalityKey) {
+  if (!team || !mentalityKey) return team;
+  const intentVal = MENTALITY_INTENT[mentalityKey] || 'balanced';
+
+  // Set team-level intent
+  const modified = { ...team, intent: intentVal, _mentality: mentalityKey };
+
+  // Boost/scaledown per-player skills based on mentality
+  // ultra_attack: +15% shooting/passing, -10% tackling
+  // attack: +8% shooting/passing, -5% tackling
+  // defend: -8% shooting/passing, +10% tackling
+  // ultra_defend: -15% shooting/passing, +20% tackling
+  const offensiveSkills = ['shooting', 'passing', 'control'];
+  const defensiveSkills = ['tackling', 'strength', 'perception'];
+
+  let offMod = 1.0, defMod = 1.0;
+  switch (mentalityKey) {
+    case 'ultra_attack':  offMod = 1.15; defMod = 0.90; break;
+    case 'attack':        offMod = 1.08; defMod = 0.95; break;
+    case 'defend':        offMod = 0.92; defMod = 1.10; break;
+    case 'ultra_defend':  offMod = 0.85; defMod = 1.20; break;
+    default: break;
+  }
+
+  const players = team.players.map((p) => {
+    const skill = { ...p.skill };
+    for (const key of offensiveSkills) {
+      if (skill[key] != null) {
+        skill[key] = String(Math.min(100, Math.round(Number(skill[key]) * offMod)));
+      }
+    }
+    for (const key of defensiveSkills) {
+      if (skill[key] != null) {
+        skill[key] = String(Math.min(100, Math.round(Number(skill[key]) * defMod)));
+      }
+    }
+    return { ...p, skill };
+  });
+
+  modified.players = players;
+  return modified;
+}
+
 /**
  * Initialise a match between two teams.
  *
  * @param {object} homeTeam — from buildTeamJson()
  * @param {object} awayTeam — from buildTeamJson()
  * @param {object} [pitch] — { pitchWidth, pitchHeight, goalWidth }
+ * @param {object} [tactics] — { homeMentality, awayMentality } (optional mentality keys)
  * @returns {Promise<object>} matchDetails
  */
-export async function createMatch(homeTeam, awayTeam, pitch) {
+export async function createMatch(homeTeam, awayTeam, pitch, tactics) {
   _suppressLog();
   const p = pitch || DEFAULT_PITCH;
-  const md = await Engine.initiateGame(homeTeam, awayTeam, p);
+
+  // Apply mentality modifiers before feeding into the engine
+  const ht = tactics?.homeMentality
+    ? applyMentalityToTeam(homeTeam, tactics.homeMentality)
+    : homeTeam;
+  const at = tactics?.awayMentality
+    ? applyMentalityToTeam(awayTeam, tactics.awayMentality)
+    : awayTeam;
+
+  const md = await Engine.initiateGame(ht, at, p);
 
   // The engine randomly assigns "kickOffTeam" and "secondTeam".
   // Normalise: tag each team with a stable side key so our UI knows
   // which is home/away regardless of the engine's internal naming.
   md._homeTeamName = homeTeam.name;
   md._awayTeamName = awayTeam.name;
+  md._homeMentality = tactics?.homeMentality || 'balanced';
+  md._awayMentality = tactics?.awayMentality || 'balanced';
+  md._homeFormation = tactics?.homeFormation || '4-4-2';
+  md._awayFormation = tactics?.awayFormation || '4-4-2';
   md._half = 1;
   md._halfIteration = 0;
   md._finished = false;

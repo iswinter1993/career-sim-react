@@ -25,7 +25,7 @@ import SIM from '../simEngine';
 import * as MatchEngine from '../matchEngine';
 import { buildTeamSquad, buildOpponentSquad } from '../squadGen';
 import PitchCanvas from './PitchCanvas';
-import { PreMatchTactics } from './TacticsPanel';
+import { PreMatchTactics, SubstitutionPanel } from './TacticsPanel';
 import { rateAllPlayers } from '../playerRating';
 import { mapGrowthToSubAttrs } from '../attributeMapping';
 
@@ -66,6 +66,7 @@ export default function MatchView() {
   const [activeTab, setActiveTab] = useState('stats');
   const [error, setError] = useState(null);
   const [fastMode, setFastMode] = useState(false);
+  const [showSubPanel, setShowSubPanel] = useState(false);
 
   // Play-loop refs — survive re-renders so the tick loop always sees
   // the latest values without depending on stale closures.
@@ -76,15 +77,19 @@ export default function MatchView() {
   //               reads EVERYTHING from these refs directly.
   const engineRef = useRef(null);
   const playCtrl = useRef({ phase: PLAY.IDLE, timer: null, fast: false });
+  const tacticsRef = useRef({ formation: '4-4-2', mentality: 'balanced' }); // stored when tactics screen finishes
 
   // Keep fast flag in the ref so the setTimeout chain sees it instantly
   useEffect(() => { playCtrl.current.fast = fastMode; }, [fastMode]);
 
   // ------------------------------------------------------------------
-  // 1. Initialise match engine on mount
+  // 1. Initialise match engine — deferred until tactics are confirmed
   // ------------------------------------------------------------------
   useEffect(() => {
+    // Only fire init when the match is ready to start playing (tactics done, ready=false)
     if (!matchState || matchState.ready) return;
+    // Must have tactics confirmed (tacticsDone) before initializing
+    if (!matchState.tacticsDone) return;
 
     let cancelled = false;
 
@@ -94,23 +99,35 @@ export default function MatchView() {
         const leagueLevel = mSimState?.league?.tier || 2;
         const matchSeed = (mSeed || 'default') + '_match';
 
+        // Use formation from tacticsRef (set by PreMatchTactics onStart callback)
+        const homeFormation = tacticsRef.current.formation || '4-4-2';
+        const homeMentality = tacticsRef.current.mentality || 'balanced';
+        // Opponent uses a random different formation for variety
+        const oppFormations = Object.keys(_getOpponentFormationPool());
+        const awayFormation = oppFormations[Math.floor(Math.random() * oppFormations.length)] || '4-4-2';
+        // Opponent mentality varies by league level (higher tier = tougher mentality)
+        const awayMentality = leagueLevel <= 2 ? 'balanced' : (Math.random() > 0.5 ? 'defend' : 'balanced');
+
         const homeSquad = buildTeamSquad(
           { name: mIdentity?.name || 'Player', pos: mIdentity?.pos || 'ST', subAttrs: playerSubAttrs },
           leagueLevel,
-          matchSeed + '_home'
+          matchSeed + '_home',
+          homeFormation
         );
-        const awaySquad = buildOpponentSquad('对手联队', leagueLevel, matchSeed + '_away');
+        const awaySquad = buildOpponentSquad('对手联队', leagueLevel, matchSeed + '_away', awayFormation);
 
         const homeTeam = MatchEngine.buildTeamJson(homeSquad.teamName, homeSquad.starters);
         const awayTeam = MatchEngine.buildTeamJson(awaySquad.teamName, awaySquad.starters);
 
-        const md = await MatchEngine.createMatch(homeTeam, awayTeam, matchState.pitch);
+        const md = await MatchEngine.createMatch(homeTeam, awayTeam, matchState.pitch, {
+          homeMentality,
+          awayMentality,
+          homeFormation,
+          awayFormation,
+        });
 
         if (cancelled) return;
 
-        // Seed the engine ref with the original engine-created object.
-        // This ref is NEVER replaced by React copies — only the engine
-        // itself writes to it via runIteration().
         engineRef.current = md;
 
         dispatch({ type: 'MATCH_READY', matchDetails: md, homeSquad, awaySquad });
@@ -122,7 +139,7 @@ export default function MatchView() {
 
     init();
     return () => { cancelled = true; };
-  }, []);
+  }, [matchState?.tacticsDone]);
 
   // ------------------------------------------------------------------
   // 2. Match completion
@@ -272,6 +289,53 @@ export default function MatchView() {
     dispatch({ type: matchPhase === MATCH.PAUSED ? 'RESUME_MATCH' : 'PAUSE_MATCH' });
   };
 
+  const handleTacticsDone = (tactics) => {
+    // Store formation/mentality choice for the match init effect
+    if (tactics) {
+      tacticsRef.current = { formation: tactics.formation || '4-4-2', mentality: tactics.mentality || 'balanced' };
+    }
+    dispatch({ type: 'RESUME_MATCH' });
+  };
+
+  const handleSubstitute = (playerOut, playerIn) => {
+    const md = engineRef.current;
+    if (!md) return;
+
+    // Determine which engine team the player is in
+    let teamKey = null;
+    for (const key of ['kickOffTeam', 'secondTeam']) {
+      const team = md[key];
+      if (team?.players?.some((p) => p.playerID === playerOut.id)) {
+        teamKey = key;
+        break;
+      }
+    }
+    if (!teamKey) return;
+
+    // Apply substitution in the engine
+    MatchEngine.applySubstitution(md, teamKey, playerOut.id, playerIn);
+
+    // Update squad references in matchState
+    const ms = matchState || {};
+    const homeSquad = ms.homeSquad ? { ...ms.homeSquad } : null;
+    if (homeSquad) {
+      // Swap in home squad's starters/sub list
+      const starterIdx = homeSquad.starters.findIndex((p) => p.id === playerOut.id);
+      if (starterIdx !== -1) {
+        homeSquad.starters = [...homeSquad.starters];
+        homeSquad.starters[starterIdx] = { ...playerIn, isPlayer: playerIn.id === 'player_self' };
+        homeSquad.subs = homeSquad.subs.filter((p) => p.id !== playerIn.id);
+      }
+    }
+
+    dispatch({
+      type: 'SUBSTITUTE',
+      matchDetails: md,
+      homeSquad,
+      awaySquad: ms.awaySquad,
+    });
+  };
+
   const handleLeaveMatch = () => {
     const ctrl = playCtrl.current;
     if (ctrl.timer) { clearTimeout(ctrl.timer); ctrl.timer = null; }
@@ -309,7 +373,7 @@ export default function MatchView() {
         <PreMatchTactics
           homeSquad={matchState?.homeSquad}
           playerID="player_self"
-          onStart={() => dispatch({ type: 'RESUME_MATCH' })}
+          onStart={handleTacticsDone}
         />
       </section>
     );
@@ -337,6 +401,8 @@ export default function MatchView() {
   const homeName = matchState?.homeSquad?.teamName || summary?.homeTeamName || '主队';
   const awayName = matchState?.awaySquad?.teamName || summary?.awayTeamName || '客队';
   const isPaused = matchPhase === MATCH.PAUSED;
+  const starters = matchState?.homeSquad?.starters || [];
+  const subs = matchState?.homeSquad?.subs || [];
 
   return (
     <section className="view match-view">
@@ -388,8 +454,24 @@ export default function MatchView() {
         <button className={`btn ${fastMode ? 'btn-secondary' : 'btn-primary'}`} onClick={() => setFastMode((f) => !f)}>
           {fastMode ? '🐢 正常速度' : '⏩ 快速模拟'}
         </button>
+        {isPaused && (
+          <button className="btn btn-accent" onClick={() => setShowSubPanel((s) => !s)}>
+            {showSubPanel ? '🗑 关闭换人' : '🔄 换人'}
+          </button>
+        )}
         <span className="match-subs-left">换人剩余: {matchState?.substitutionsLeft ?? 3}</span>
       </div>
+
+      {isPaused && showSubPanel && (
+        <SubstitutionPanel
+          starters={starters}
+          subs={subs}
+          substitutionsLeft={matchState?.substitutionsLeft ?? 0}
+          onSubstitute={handleSubstitute}
+          onResume={() => setShowSubPanel(false)}
+          playerID="player_self"
+        />
+      )}
     </section>
   );
 }
@@ -506,6 +588,8 @@ function MatchResultPanel({ matchState, onContinue }) {
   const mvp = matchState?.mvp;
   const homeName = matchState?.homeSquad?.teamName || '主队';
   const awayName = matchState?.awaySquad?.teamName || '客队';
+  const homeFormation = matchState?.matchDetails?._homeFormation || '4-4-2';
+  const awayFormation = matchState?.matchDetails?._awayFormation || '4-4-2';
 
   return (
     <div className="match-result-panel">
@@ -594,4 +678,18 @@ function buildMatchResultText(summary, playerRating) {
 function buildGrowthDisplay(deltas) {
   if (!deltas) return [];
   return Object.entries(deltas).map(([key, val]) => ({ text: `${key} +${val}`, cls: 'positive' }));
+}
+
+/**
+ * Opponent formation pool — formations the AI can use against the player.
+ * Excludes the player's chosen formation for variety.
+ */
+function _getOpponentFormationPool() {
+  return {
+    '4-4-2': true,
+    '4-3-3': true,
+    '4-2-3-1': true,
+    '3-5-2': true,
+    '5-3-2': true,
+  };
 }
