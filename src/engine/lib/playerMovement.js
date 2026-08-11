@@ -3,6 +3,122 @@ import * as common from './common.js'
 import * as ballMovement from './ballMovement.js'
 import * as setPositions from './setPositions.js'
 import * as actions from './actions.js'
+import { getPositionGroup, isDefensivePosition, isAttackingPosition, isWidePosition } from './positionGroup.js'
+import { getRoleModifier, evaluateTraits } from './tactics.js'
+
+// ===========================================================================
+// THREE-LAYER AI — Movement Modifiers (P4.5)
+// ===========================================================================
+
+/**
+ * Calculate movement modifiers for a player from all three AI layers.
+ * Called by getRunMovement / getSprintMovement to adjust behaviour.
+ *
+ * Layer 1 (Team Strategy): width, pressing, fluidity
+ * Layer 2 (Player Role): forwardRuns, holdPosition, stayWide, cutInside, …
+ * Layer 3 (Player Traits): additive override on top of role
+ *
+ * @param {object} player — engine player with .role, .traits, .position
+ * @param {object} teamStrategy — team._strategy (from applyTeamStrategy)
+ * @param {object} matchState — { ball, ballPossession }
+ * @returns {{ forwardRuns: number, holdPosition: number, stayWide: number,
+ *             cutInside: number, roamFromPosition: number, closingDown: number,
+ *             staminaDrain: number, invertInside: number }}
+ */
+export function getMovementModifiers(player, teamStrategy, matchState) {
+  if (!player) {
+    return {
+      forwardRuns: 1.0, holdPosition: 1.0, stayWide: 1.0, cutInside: 1.0,
+      roamFromPosition: 1.0, closingDown: 1.0, staminaDrain: 1.0, invertInside: 1.0,
+    };
+  }
+
+  const modifiers = {
+    forwardRuns: 1.0, holdPosition: 1.0, stayWide: 1.0, cutInside: 1.0,
+    roamFromPosition: 1.0, closingDown: 1.0, staminaDrain: 1.0, invertInside: 1.0,
+  };
+  // --- Layer 1: Team Strategy ---
+  if (teamStrategy) {
+    if (teamStrategy._widthMultiplier) {
+      modifiers.stayWide *= teamStrategy._widthMultiplier;
+    }
+    if (teamStrategy._pressingMultiplier) {
+      modifiers.closingDown *= teamStrategy._pressingMultiplier;
+    }
+    if (teamStrategy._fluidityFactor !== undefined) {
+      modifiers.roamFromPosition += teamStrategy._fluidityFactor;
+      modifiers.holdPosition -= teamStrategy._fluidityFactor * 0.5;
+    }
+  }
+
+  // --- Layer 2: Player Role ---
+  if (player.role) {
+    const role = getRoleModifier(player.role);
+    if (role.movementModifiers) {
+      const rm = role.movementModifiers;
+      if (rm.forwardRuns !== undefined) modifiers.forwardRuns += rm.forwardRuns;
+      if (rm.holdPosition !== undefined) modifiers.holdPosition += rm.holdPosition;
+      if (rm.stayWide !== undefined) modifiers.stayWide += rm.stayWide;
+      if (rm.cutInside !== undefined) modifiers.cutInside += rm.cutInside;
+      if (rm.roamFromPosition !== undefined) modifiers.roamFromPosition += rm.roamFromPosition;
+      if (rm.closingDown !== undefined) modifiers.closingDown += rm.closingDown;
+      if (rm.staminaDrain !== undefined) modifiers.staminaDrain += rm.staminaDrain;
+      if (rm.invertInside !== undefined) modifiers.invertInside += rm.invertInside;
+    }
+  }
+
+  // --- Layer 3: Player Traits ---
+  if (player.traits && player.traits.length > 0) {
+    const traitEffects = evaluateTraits(player, matchState);
+    if (traitEffects.movementModifiers) {
+      const tm = traitEffects.movementModifiers;
+      if (tm.forwardRuns !== undefined) modifiers.forwardRuns += tm.forwardRuns;
+      if (tm.holdPosition !== undefined) modifiers.holdPosition += tm.holdPosition;
+      if (tm.stayWide !== undefined) modifiers.stayWide += tm.stayWide;
+      if (tm.cutInside !== undefined) modifiers.cutInside += tm.cutInside;
+      if (tm.roamFromPosition !== undefined) modifiers.roamFromPosition += tm.roamFromPosition;
+      if (tm.closingDown !== undefined) modifiers.closingDown += tm.closingDown;
+      if (tm.staminaDrain !== undefined) modifiers.staminaDrain += tm.staminaDrain;
+      if (tm.invertInside !== undefined) modifiers.invertInside += tm.invertInside;
+    }
+  }
+
+  // Clamp to reasonable ranges (0.1 - 2.0)
+  for (const key of Object.keys(modifiers)) {
+    modifiers[key] = Math.max(0.1, Math.min(2.0, modifiers[key]));
+  }
+
+  return modifiers;
+}
+
+/**
+ * Resolve the active team strategy from the matchDetails and team side.
+ * Helper for movement functions to discover which team strategy to apply.
+ */
+function _resolveTeamStrategy(matchDetails, player) {
+  // Try team._strategy first (injected by injectTacticsIntoTeam)
+  // Fall back to matchDetails metadata
+  const originY = player.originPOS?.[1] || 0;
+  const pitchHeight = matchDetails.pitchSize?.[1] || 1050;
+  const isTop = originY < pitchHeight / 2;
+
+  const kickIsHome = matchDetails.kickOffTeam?.name === matchDetails._homeTeamName;
+  const homeTeamKey = kickIsHome ? 'kickOffTeam' : 'secondTeam';
+  const awayTeamKey = kickIsHome ? 'secondTeam' : 'kickOffTeam';
+
+  // Determine which side this player belongs to
+  const homeTeam = matchDetails[homeTeamKey];
+  const awayTeam = matchDetails[awayTeamKey];
+
+  if (homeTeam?.players?.some(p => p.playerID === player.playerID)) {
+    return homeTeam._strategy || matchDetails._homeStrategy || null;
+  }
+  if (awayTeam?.players?.some(p => p.playerID === player.playerID)) {
+    return awayTeam._strategy || matchDetails._awayStrategy || null;
+  }
+
+  return matchDetails._homeStrategy || matchDetails._awayStrategy || null;
+}
 
 function decideMovement(closestPlayer, team, opp, matchDetails) {
   const allActions = [`shoot`, `throughBall`, `pass`, `cross`, `tackle`, `intercept`, `slide`]
@@ -347,53 +463,167 @@ function getInterceptTrajectory(opposition, ballPosition, pitchSize) {
 
 function getRunMovement(matchDetails, player, ballX, ballY) {
   let move = [0, 0]
-  if (player.fitness > 20) player.fitness = common.round(player.fitness - 0.005, 6)
+
+  // P4.5: Tactical movement modifiers
+  const teamStr = _resolveTeamStrategy(matchDetails, player);
+  const modifiers = getMovementModifiers(player, teamStr, {
+    ballPossession: matchDetails.ball?.withPlayer
+      ? (matchDetails.ball?.withTeam === matchDetails.kickOffTeam?.teamID ? 'home' : 'away')
+      : 'loose',
+    ball: matchDetails.ball?.position,
+  });
+
+  // Apply stamina drain from modifiers
+  if (player.fitness > 20) {
+    player.fitness = common.round(player.fitness - (0.005 * modifiers.staminaDrain), 6);
+  }
   let side = (player.originPOS[1] > matchDetails.pitchSize[1] / 2) ? `bottom` : `top`
-  if (player.hasBall && side == `bottom`) return [common.getRandomNumber(0, 2), common.getRandomNumber(0, 2)]
-  if (player.hasBall && side == `top`) return [common.getRandomNumber(-2, 0), common.getRandomNumber(-2, 0)]
+  // Position-group-differentiated dribbling: attackers more aggressive
+  const attSpeed = isAttackingPosition(player.position) ? 1 : 0
+
+  // Apply forwardRuns modifier to attacking direction bias
+  const fwdBias = modifiers.forwardRuns;
+
+  if (player.hasBall && side == `bottom`) return [common.getRandomNumber(0 + attSpeed, 2 + attSpeed), common.getRandomNumber(0, 2)]
+  if (player.hasBall && side == `top`) return [common.getRandomNumber(-2 - attSpeed, 0 - attSpeed), common.getRandomNumber(-2, 0)]
   let movementRun = [-1, 0, 1]
+  // Position-group-differentiated off-ball: defensive players less aggressive forward runs
+  const runBias = isDefensivePosition(player.position) ? 1 : 0  // defensive players pick middle index more
+
+  // Apply roamFromPosition — more roaming = wider random range
+  if (modifiers.roamFromPosition > 1.0) {
+    movementRun = [-2, -1, 0, 1, 2]; // expanded movement options
+  }
+
   if (common.isBetween(ballX, -60, 60) && common.isBetween(ballY, -60, 60)) {
-    if (common.isBetween(ballX, -60, 0)) move[0] = movementRun[common.getRandomNumber(2, 2)]
-    else if (common.isBetween(ballX, 0, 60)) move[0] = movementRun[common.getRandomNumber(0, 0)]
+    if (common.isBetween(ballX, -60, 0)) move[0] = movementRun[common.getRandomNumber(2 - runBias, 2)]
+    else if (common.isBetween(ballX, 0, 60)) move[0] = movementRun[common.getRandomNumber(0, 0 + runBias)]
     else move[0] = movementRun[common.getRandomNumber(1, 1)]
-    if (common.isBetween(ballY, -60, 0)) move[1] = movementRun[common.getRandomNumber(2, 2)]
-    else if (common.isBetween(ballY, 0, 60)) move[1] = movementRun[common.getRandomNumber(0, 0)]
+    if (common.isBetween(ballY, -60, 0)) move[1] = movementRun[common.getRandomNumber(2 - runBias, 2)]
+    else if (common.isBetween(ballY, 0, 60)) move[1] = movementRun[common.getRandomNumber(0, 0 + runBias)]
     else move[1] = movementRun[common.getRandomNumber(1, 1)]
     return move
   }
   let formationDirection = setPositions.formationCheck(player.intentPOS, player.currentPOS)
+
+  // Apply forwardRuns: amplify forward direction preference
+  const fwdIdxY = formationDirection[1] === 0 ? 1 :
+    formationDirection[1] < 0 ? 2 - Math.round(fwdBias * 0.5) : 1 + Math.round(fwdBias * 0.5);
+
   if (formationDirection[0] === 0) move[0] = movementRun[common.getRandomNumber(1, 1)]
   else if (formationDirection[0] < 0) move[0] = movementRun[common.getRandomNumber(0, 1)]
   else if (formationDirection[0] > 0) move[0] = movementRun[common.getRandomNumber(1, 2)]
   if (formationDirection[1] === 0) move[1] = movementRun[common.getRandomNumber(1, 1)]
-  else if (formationDirection[1] < 0) move[1] = movementRun[common.getRandomNumber(0, 1)]
-  else if (formationDirection[1] > 0) move[1] = movementRun[common.getRandomNumber(1, 2)]
+  else if (formationDirection[1] < 0) move[1] = movementRun[common.getRandomNumber(
+    Math.max(0, 2 - Math.round(fwdBias)),
+    Math.min(2, 2)
+  )]
+  else if (formationDirection[1] > 0) move[1] = movementRun[common.getRandomNumber(
+    0,
+    Math.min(2, Math.round(fwdBias))
+  )]
+
+  // Apply stayWide / cutInside to X axis movement
+  if (modifiers.stayWide > 1.0 || modifiers.cutInside > 1.0) {
+    const centerX = matchDetails.pitchSize[0] / 2;
+    const offsetFromCenter = player.currentPOS[0] - centerX;
+    if (Math.abs(offsetFromCenter) > 100) { // only apply to wide players
+      if (modifiers.stayWide > 1.0 && Math.abs(offsetFromCenter) > 0) {
+        // pull wider: move away from center
+        move[0] += offsetFromCenter > 0 ? 0 : 0; // stayWide keeps wide position — don't counteract
+      }
+      if (modifiers.cutInside > 1.0) {
+        // pull inside: move toward center
+        move[0] += offsetFromCenter > 0 ? -1 : 1;
+      }
+    }
+  }
+
   return move
 }
 
 function getSprintMovement(matchDetails, player, ballX, ballY) {
   let move = [0, 0]
-  if (player.fitness > 30) player.fitness = common.round(player.fitness - 0.01, 6)
+
+  // P4.5: Tactical movement modifiers
+  const teamStr = _resolveTeamStrategy(matchDetails, player);
+  const modifiers = getMovementModifiers(player, teamStr, {
+    ballPossession: matchDetails.ball?.withPlayer
+      ? (matchDetails.ball?.withTeam === matchDetails.kickOffTeam?.teamID ? 'home' : 'away')
+      : 'loose',
+    ball: matchDetails.ball?.position,
+  });
+
+  // Apply stamina drain from modifiers
+  if (player.fitness > 30) {
+    player.fitness = common.round(player.fitness - (0.01 * modifiers.staminaDrain), 6);
+  }
   let side = (player.originPOS[1] > matchDetails.pitchSize[1] / 2) ? `bottom` : `top`
-  if (player.hasBall && side == `bottom`) return [common.getRandomNumber(-4, 4), common.getRandomNumber(-4, -2)]
-  if (player.hasBall && side == `top`) return [common.getRandomNumber(-4, 4), common.getRandomNumber(2, 4)]
+  // Position-group-differentiated sprint: attackers more aggressive, wide players wider
+  const attBoost = isAttackingPosition(player.position) ? 1 : 0
+  const wideBoost = isWidePosition(player.position) ? 1 : 0
+  // P4.5: Apply forwardRuns modifier to sprint aggressiveness
+  const fwdBoost = Math.round((modifiers.forwardRuns - 1.0) * 2);
+  if (player.hasBall && side == `bottom`) return [
+    common.getRandomNumber(-4 - wideBoost, 4 + wideBoost),
+    common.getRandomNumber(-4 - attBoost - fwdBoost, -2 - fwdBoost)
+  ]
+  if (player.hasBall && side == `top`) return [
+    common.getRandomNumber(-4 - wideBoost, 4 + wideBoost),
+    common.getRandomNumber(2 + fwdBoost, 4 + attBoost + fwdBoost)
+  ]
   let movementSprint = [-2, -1, 0, 1, 2]
+  // Defensive players: smaller sprints closer to formation
+  const defBias = isDefensivePosition(player.position) ? 1 : 0
+
+  // Apply roamFromPosition — more roaming = wider sprint options
+  if (modifiers.roamFromPosition > 1.0) {
+    movementSprint = [-3, -2, -1, 0, 1, 2, 3];
+  }
+
   if (common.isBetween(ballX, -60, 60) && common.isBetween(ballY, -60, 60)) {
-    if (common.isBetween(ballX, -60, 0)) move[0] = movementSprint[common.getRandomNumber(3, 4)]
-    else if (common.isBetween(ballX, 0, 60)) move[0] = movementSprint[common.getRandomNumber(0, 1)]
+    if (common.isBetween(ballX, -60, 0)) move[0] = movementSprint[common.getRandomNumber(3 - defBias, 4)]
+    else if (common.isBetween(ballX, 0, 60)) move[0] = movementSprint[common.getRandomNumber(0, 1 + defBias)]
     else move[0] = movementSprint[common.getRandomNumber(2, 2)]
-    if (common.isBetween(ballY, -60, 0)) move[1] = movementSprint[common.getRandomNumber(3, 4)]
-    else if (common.isBetween(ballY, 0, 60)) move[1] = movementSprint[common.getRandomNumber(0, 1)]
+    if (common.isBetween(ballY, -60, 0)) move[1] = movementSprint[common.getRandomNumber(3 - defBias, 4)]
+    else if (common.isBetween(ballY, 0, 60)) move[1] = movementSprint[common.getRandomNumber(0, 1 + defBias)]
     else move[1] = movementSprint[common.getRandomNumber(2, 2)]
     return move
   }
   let formationDirection = setPositions.formationCheck(player.intentPOS, player.currentPOS)
+
+  // Apply forwardRuns modifier — more forward movement toward goal
+  const fwdIdx = Math.round((modifiers.forwardRuns - 1.0) * 2); // -2 to +2 adjustment
   if (formationDirection[0] === 0) move[0] = movementSprint[common.getRandomNumber(2, 2)]
-  else if (formationDirection[0] < 0) move[0] = movementSprint[common.getRandomNumber(0, 2)]
-  else if (formationDirection[0] > 0) move[0] = movementSprint[common.getRandomNumber(2, 4)]
+  else if (formationDirection[0] < 0) move[0] = movementSprint[common.getRandomNumber(
+    Math.max(0, 0 + defBias - fwdIdx),
+    Math.min(movementSprint.length - 1, 2)
+  )]
+  else if (formationDirection[0] > 0) move[0] = movementSprint[common.getRandomNumber(
+    Math.max(0, 2),
+    Math.min(movementSprint.length - 1, 4 - defBias + fwdIdx)
+  )]
   if (formationDirection[1] === 0) move[1] = movementSprint[common.getRandomNumber(2, 2)]
-  else if (formationDirection[1] < 0) move[1] = movementSprint[common.getRandomNumber(0, 2)]
-  else if (formationDirection[1] > 0) move[1] = movementSprint[common.getRandomNumber(2, 4)]
+  else if (formationDirection[1] < 0) move[1] = movementSprint[common.getRandomNumber(
+    Math.max(0, 0 + defBias - fwdIdx),
+    Math.min(movementSprint.length - 1, 2)
+  )]
+  else if (formationDirection[1] > 0) move[1] = movementSprint[common.getRandomNumber(
+    Math.max(0, 2),
+    Math.min(movementSprint.length - 1, 4 - defBias + fwdIdx)
+  )]
+
+  // Apply stayWide / cutInside to X axis during sprint
+  if (modifiers.stayWide > 1.0 || modifiers.cutInside > 1.0) {
+    const centerX = matchDetails.pitchSize[0] / 2;
+    const offsetFromCenter = player.currentPOS[0] - centerX;
+    if (Math.abs(offsetFromCenter) > 100) {
+      if (modifiers.cutInside > 1.0) {
+        move[0] += offsetFromCenter > 0 ? -1 : 1;
+      }
+    }
+  }
+
   return move
 }
 
@@ -505,7 +735,7 @@ function offsideYPOS(team, side, pitchHeight) {
     'pos2': pitchHeight / 2
   }
   for (let thisPlayer of team.players) {
-    if (thisPlayer.position == `GK`) {
+    if (getPositionGroup(thisPlayer.position) === 'GK') {
       let [, position1] = thisPlayer.currentPOS
       offsideYPOS.pos1 = position1
       if (thisPlayer.hasBall) {

@@ -1,6 +1,7 @@
 import * as common from './common.js'
 import * as setVariables from './setVariables.js'
 import * as setFreekicks from './setFreekicks.js'
+import { isDefensivePosition, isMidfieldPosition, isAttackingPosition, isWidePosition, getPositionGroup } from './positionGroup.js'
 
 function setGoalieHasBall(matchDetails, thisGoalie) {
   let { kickOffTeam, secondTeam } = matchDetails
@@ -28,13 +29,20 @@ function setTopRightCornerPositions(matchDetails) {
   let halfPitchSize = (matchDetails.pitchSize[1] / 2)
   let attack = (kickOffTeamKeepYPos > halfPitchSize) ? matchDetails.kickOffTeam : matchDetails.secondTeam
   let defence = (kickOffTeamKeepYPos > halfPitchSize) ? matchDetails.secondTeam : matchDetails.kickOffTeam
-  for (let playerNum of [0, 1, 2, 3, 4]) {
-    attack.players[playerNum].currentPOS = attack.players[playerNum].originPOS.map(x => x)
-    defence.players[playerNum].currentPOS = defence.players[playerNum].originPOS.map(x => x)
+  // Position-group-based corner assignment: defensive players hold line, attacking players push forward
+  for (let player of attack.players) {
+    if (isDefensivePosition(player.position)) {
+      player.currentPOS = player.originPOS.map(x => x)
+    } else {
+      player.currentPOS = common.getRandomTopPenaltyPosition(matchDetails)
+    }
   }
-  for (let playerNum of [5, 6, 7, 8, 9, 10]) {
-    attack.players[playerNum].currentPOS = common.getRandomTopPenaltyPosition(matchDetails)
-    defence.players[playerNum].currentPOS = common.getRandomTopPenaltyPosition(matchDetails)
+  for (let player of defence.players) {
+    if (isDefensivePosition(player.position)) {
+      player.currentPOS = player.originPOS.map(x => x)
+    } else {
+      player.currentPOS = common.getRandomTopPenaltyPosition(matchDetails)
+    }
   }
   attack.players[1].currentPOS = [pitchWidth, 0]
   attack.players[4].currentPOS = [pitchWidth - 10, 20]
@@ -51,13 +59,19 @@ function setTopLeftCornerPositions(matchDetails) {
   let halfPitchSize = matchDetails.pitchSize[1] / 2
   let attack = (kickOffTeamKeepYPos > halfPitchSize) ? matchDetails.kickOffTeam : matchDetails.secondTeam
   let defence = (kickOffTeamKeepYPos > halfPitchSize) ? matchDetails.secondTeam : matchDetails.kickOffTeam
-  for (let playerNum of [0, 1, 2, 3, 4]) {
-    attack.players[playerNum].currentPOS = attack.players[playerNum].originPOS.map(x => x)
-    defence.players[playerNum].currentPOS = defence.players[playerNum].originPOS.map(x => x)
+  for (let player of attack.players) {
+    if (isDefensivePosition(player.position)) {
+      player.currentPOS = player.originPOS.map(x => x)
+    } else {
+      player.currentPOS = common.getRandomTopPenaltyPosition(matchDetails)
+    }
   }
-  for (let playerNum of [5, 6, 7, 8, 9, 10]) {
-    attack.players[playerNum].currentPOS = common.getRandomTopPenaltyPosition(matchDetails)
-    defence.players[playerNum].currentPOS = common.getRandomTopPenaltyPosition(matchDetails)
+  for (let player of defence.players) {
+    if (isDefensivePosition(player.position)) {
+      player.currentPOS = player.originPOS.map(x => x)
+    } else {
+      player.currentPOS = common.getRandomTopPenaltyPosition(matchDetails)
+    }
   }
   attack.players[1].currentPOS = [0, 0]
   attack.players[4].currentPOS = [10, 20]
@@ -75,13 +89,19 @@ function setBottomLeftCornerPositions(matchDetails) {
   let halfPitchSize = matchDetails.pitchSize[1] / 2
   let attack = (kickOffTeamKeepYPos < halfPitchSize) ? matchDetails.kickOffTeam : matchDetails.secondTeam
   let defence = (kickOffTeamKeepYPos < halfPitchSize) ? matchDetails.secondTeam : matchDetails.kickOffTeam
-  for (let playerNum of [0, 1, 2, 3, 4]) {
-    attack.players[playerNum].currentPOS = attack.players[playerNum].originPOS.map(x => x)
-    defence.players[playerNum].currentPOS = defence.players[playerNum].originPOS.map(x => x)
+  for (let player of attack.players) {
+    if (isDefensivePosition(player.position)) {
+      player.currentPOS = player.originPOS.map(x => x)
+    } else {
+      player.currentPOS = common.getRandomBottomPenaltyPosition(matchDetails)
+    }
   }
-  for (let playerNum of [5, 6, 7, 8, 9, 10]) {
-    attack.players[playerNum].currentPOS = common.getRandomBottomPenaltyPosition(matchDetails)
-    defence.players[playerNum].currentPOS = common.getRandomBottomPenaltyPosition(matchDetails)
+  for (let player of defence.players) {
+    if (isDefensivePosition(player.position)) {
+      player.currentPOS = player.originPOS.map(x => x)
+    } else {
+      player.currentPOS = common.getRandomBottomPenaltyPosition(matchDetails)
+    }
   }
   attack.players[1].currentPOS = [0, pitchHeight]
   attack.players[4].currentPOS = [10, pitchHeight - 20]
@@ -99,13 +119,19 @@ function setBottomRightCornerPositions(matchDetails) {
   let halfPitchSize = matchDetails.pitchSize[1] / 2
   let attack = (kickOffTeamKeepYPos < halfPitchSize) ? matchDetails.kickOffTeam : matchDetails.secondTeam
   let defence = (kickOffTeamKeepYPos < halfPitchSize) ? matchDetails.secondTeam : matchDetails.kickOffTeam
-  for (let playerNum of [0, 1, 2, 3, 4]) {
-    attack.players[playerNum].currentPOS = attack.players[playerNum].originPOS.map(x => x)
-    defence.players[playerNum].currentPOS = defence.players[playerNum].originPOS.map(x => x)
+  for (let player of attack.players) {
+    if (isDefensivePosition(player.position)) {
+      player.currentPOS = player.originPOS.map(x => x)
+    } else {
+      player.currentPOS = common.getRandomBottomPenaltyPosition(matchDetails)
+    }
   }
-  for (let playerNum of [5, 6, 7, 8, 9, 10]) {
-    attack.players[playerNum].currentPOS = common.getRandomBottomPenaltyPosition(matchDetails)
-    defence.players[playerNum].currentPOS = common.getRandomBottomPenaltyPosition(matchDetails)
+  for (let player of defence.players) {
+    if (isDefensivePosition(player.position)) {
+      player.currentPOS = player.originPOS.map(x => x)
+    } else {
+      player.currentPOS = common.getRandomBottomPenaltyPosition(matchDetails)
+    }
   }
   attack.players[1].currentPOS = [pitchWidth, pitchHeight]
   attack.players[4].currentPOS = [pitchWidth - 10, pitchHeight - 20]
@@ -667,6 +693,8 @@ function setDefenceRelativePos(matchDetails, defendingTeam, closestPlayer) {
     const baseY = player.originPOS[1]
     const diffX = ball.position[0] - player.currentPOS[0]
     const diffY = ball.position[1] - player.currentPOS[1]
+    // Defensive midfielders press more aggressively than back-line defenders
+    const compressionFactor = (getPositionGroup(player.position) === 'DM') ? 0.55 : 0.20
     if (player.playerID === closestPlayer.playerID) {
       player.intentPOS = [
         player.currentPOS[0] + diffX * 0.6,
@@ -674,8 +702,8 @@ function setDefenceRelativePos(matchDetails, defendingTeam, closestPlayer) {
       ]
       continue
     }
-    const lineShiftY = (ball.position[1] - baseY) * 0.2
-    const compressX = (ball.position[0] - baseX) * 0.2
+    const lineShiftY = (ball.position[1] - baseY) * compressionFactor
+    const compressX = (ball.position[0] - baseX) * compressionFactor
     player.intentPOS = [
       baseX + compressX,
       baseY + lineShiftY
@@ -688,7 +716,9 @@ function setAttackRelativePos(matchDetails, kickingTeam) {
   for (let player of kickingTeam.players) {
     const baseX = player.originPOS[0]
     const baseY = player.originPOS[1]
-    const compressX = (ball.position[0] - baseX) * 0.3
+    // Wide players expand more laterally in attack
+    const widthFactor = isWidePosition(player.position) ? 0.45 : 0.30
+    const compressX = (ball.position[0] - baseX) * widthFactor
     const attackingPush = (ball.position[1] - baseY) * 0.35
     player.intentPOS = [
       baseX + compressX,

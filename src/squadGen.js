@@ -1,14 +1,19 @@
-// Random squad generator — creates 16-man teams (11 starters + 5 subs)
+// Random squad generator — creates 18-man teams (11 starters + 7 subs)
 // with full sub-attribute sets and engine-ready skill mapping.
 //
 // Public API:
-//   setSeed(seed)                 — seed the deterministic PRNG
+//   setSeed(seed)                        — seed the deterministic PRNG
 //   generatePlayer(position, qualityMin, qualityMax) → player object
-//   buildTeamSquad(playerIdentity, leagueLevel, seed) → { teamName, starters, subs, all }
-//   buildOpponentSquad(teamName, leagueLevel, seed)    → { teamName, starters, subs, all }
+//   buildTeamSquad(playerIdentity, leagueLevel, seed, formation) → { teamName, starters, subs, all, formation }
+//   buildOpponentSquad(teamName, leagueLevel, seed, formation)    → { teamName, starters, subs, all, formation }
+//   pickFormationForSquad(starterPositions) → string
+//   isValidFormation(name)               → boolean
+//   FORMATIONS                           → { name: string[] } (formation slot positions)
 
 import { SUB_ATTRS, getWeights } from './attributes.js';
 import { mapToEngineSkills } from './attributeMapping.js';
+import { getAvailableFormations, getFormationSlots, getDefaultFormation } from './engine/lib/formation.js';
+import { getPositionGroup, ALL_POSITIONS } from './engine/lib/positionGroup.js';
 
 // ---------------------------------------------------------------------------
 // Seeded PRNG (mulberry32)
@@ -111,19 +116,96 @@ const POSITION_ROLES = {
   ST:  { key: 'ST',  label: '前锋' },
 };
 
-// Formation definitions: name → position array (11 starters)
-// Positions are listed in standard order: GK → DEF → MID → ATT
-const FORMATIONS = {
-  '4-4-2':   ['GK', 'RB', 'CB', 'CB', 'LB',    'RM', 'CM', 'CM', 'LM',    'ST', 'ST'],
-  '4-3-3':   ['GK', 'RB', 'CB', 'CB', 'LB',    'CM', 'CM', 'CM',          'RW', 'ST', 'LW'],
-  '4-2-3-1': ['GK', 'RB', 'CB', 'CB', 'LB',    'CDM','CDM',               'RM', 'CAM', 'LM', 'ST'],
-  '3-5-2':   ['GK', 'CB', 'CB', 'CB',          'RM', 'CM', 'CM', 'CM', 'LM',    'ST', 'ST'],
-  '5-3-2':   ['GK', 'RB', 'CB', 'CB', 'CB', 'LB', 'CM', 'CM', 'CM',            'ST', 'ST'],
-};
+// Build formation slot list from formation.js (replaces old hardcoded FORMATIONS)
+// Each entry: { formation: '4-4-2', slots: ['GK', 'RB', 'CB', 'CB', 'LB', 'RM', 'CM', 'CM', 'LM', 'ST', 'ST'] }
+function _buildFormationSlots() {
+  const names = getAvailableFormations();
+  const result = {};
+  for (const name of names) {
+    const slots = getFormationSlots(name);
+    result[name] = slots.map((s) => s.pos);
+  }
+  return result;
+}
 
-// Default position filler order — used when building substitute slots
-// to ensure positional diversity on the bench
-const SUB_POSITION_POOL = ['GK', 'CB', 'CM', 'LM', 'ST'];
+/** Formation name → position array (11 starters each), sourced from formation.js. */
+const FORMATIONS = _buildFormationSlots();
+
+/**
+ * Check if a formation key is valid.
+ * @param {string} name
+ * @returns {boolean}
+ */
+export function isValidFormation(name) {
+  return FORMATIONS.hasOwnProperty(name);
+}
+
+// Bench templates — ensures positional coverage across all position groups.
+// Each template covers: 1 GK + 3 DEF variants + 3 MID/WIDE variants + 1 FWD variant = 8 positions
+// but we keep 7 subs max. Templates cycle through different position combinations.
+const SUB_POSITION_TEMPLATES = [
+  // Template 1: balanced bench — 1GK + 2DEF + 2MID + 1WIDE + 1FWD
+  ['GK', 'CB', 'LB', 'CM', 'CAM', 'LW', 'ST'],
+  // Template 2: defensive bench — 1GK + 2DEF + 1MID + 1WIDE + 2FWD
+  ['GK', 'CB', 'RB', 'CDM', 'CM', 'RW', 'ST'],
+  // Template 3: attacking bench — 1GK + 2DEF + 1MID + 2WIDE + 1FWD
+  ['GK', 'CB', 'LB', 'CM', 'CAM', 'LW', 'RW'],
+  // Template 4: wide-heavy bench — 1GK + 2DEF + 2MID + 2WIDE + 1FWD
+  ['GK', 'CB', 'RB', 'CDM', 'CM', 'LM', 'LW', 'ST'],
+  // Template 5: compact bench (LM only bench) — 1GK + 3DEF + 2MID + 1FWD
+  ['GK', 'CB', 'CB', 'CDM', 'CM', 'CAM', 'ST'],
+];
+
+function _getRandomBenchTemplate(rng) {
+  return SUB_POSITION_TEMPLATES[Math.floor(rng() * SUB_POSITION_TEMPLATES.length)];
+}
+
+/**
+ * Pick the best formation for a set of starter positions.
+ * Scores each formation by how well its slots match the given positions.
+ *
+ * @param {string[]} starterPositions — 11 positions
+ * @returns {string} best-matching formation key
+ */
+export function pickFormationForSquad(starterPositions) {
+  if (!starterPositions || starterPositions.length === 0) return getDefaultFormation();
+
+  // Count position groups
+  const posCounts = {};
+  for (const p of starterPositions) {
+    posCounts[p] = (posCounts[p] || 0) + 1;
+  }
+
+  let bestFormation = getDefaultFormation();
+  let bestScore = -1;
+
+  for (const [name, slots] of Object.entries(FORMATIONS)) {
+    const slotCounts = {};
+    for (const s of slots) {
+      slotCounts[s] = (slotCounts[s] || 0) + 1;
+    }
+
+    // Score: count how many positions match exactly
+    let score = 0;
+    for (const [pos, count] of Object.entries(posCounts)) {
+      const slotCount = slotCounts[pos] || 0;
+      score += Math.min(count, slotCount) * 3; // exact match worth 3
+      score -= Math.abs(count - slotCount);     // mismatch penalty
+    }
+
+    // Bonus for position group diversity
+    const groups = new Set();
+    for (const s of slots) groups.add(getPositionGroup(s));
+    score += groups.size;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestFormation = name;
+    }
+  }
+
+  return bestFormation;
+}
 
 // ---------------------------------------------------------------------------
 // Public API — player generation
@@ -235,9 +317,12 @@ export function buildTeamSquad(playerIdentity, leagueLevel, seed, formation) {
     }
   }
 
-  // Generate 5 substitutes with positional diversity
+  // Generate 7 substitutes with positional diversity using bench templates
   const subs = [];
-  for (const pos of SUB_POSITION_POOL) {
+  const benchTemplate = _getRandomBenchTemplate(rand);
+  // Take up to 7 subs from the template (ensures coverage)
+  const subPositions = benchTemplate.slice(0, 7);
+  for (const pos of subPositions) {
     const sub = generatePlayer(pos, quality[0], quality[1]);
     sub.id = `sub_${pos}_${subs.length}`;
     subs.push(sub);
@@ -272,7 +357,9 @@ export function buildOpponentSquad(teamName, leagueLevel, seed, formation) {
   }
 
   const subs = [];
-  for (const pos of SUB_POSITION_POOL) {
+  const benchTemplate = _getRandomBenchTemplate(rand);
+  const subPositions = benchTemplate.slice(0, 7);
+  for (const pos of subPositions) {
     const sub = generatePlayer(pos, quality[0], quality[1]);
     sub.id = `oppSub_${pos}_${subs.length}`;
     subs.push(sub);

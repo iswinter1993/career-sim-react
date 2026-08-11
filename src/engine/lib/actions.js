@@ -1,5 +1,155 @@
 import * as common from './common.js'
 import * as setPositions from './setPositions.js'
+import { getPositionGroup, isDefensivePosition, isMidfieldPosition, isAttackingPosition, isWidePosition } from './positionGroup.js'
+import { getRoleModifier, evaluateTraits } from './tactics.js'
+
+// ===========================================================================
+// THREE-LAYER AI — Action Score Equation (P4.4)
+// ===========================================================================
+//
+// Event Score = PlayerGrade + PositionAbility + M(L) + AC
+//
+// We inject role/trait/strategy modifiers into the action weight array before
+// normalisation, modifying the relative probability of each action.
+
+/**
+ * Calculate the tactical modifier for a single action.
+ * Multiplies Layer 2 (role), Layer 3 (traits), and Layer 1 (team strategy).
+ *
+ * @param {object} player — engine player with .role, .traits
+ * @param {string} actionName — 'shoot', 'pass', 'tackle', …
+ * @param {object} matchState — { ball, ballPossession, scenario, freeKickDistance, iteration }
+ * @param {object} teamStrategy — team._strategy (from applyTeamStrategy)
+ * @returns {number} multiplier (1.0 = no modification)
+ */
+export function calculateModifiedActionWeight(player, actionName, matchState, teamStrategy) {
+  if (!player) return 1.0;
+
+  let modifier = 1.0;
+
+  // --- Layer 2: Role modifier ---
+  if (player.role) {
+    const role = getRoleModifier(player.role);
+    const roleMod = role.actionModifiers?.[actionName];
+    if (roleMod !== undefined) {
+      modifier *= roleMod;
+    }
+  }
+
+  // --- Layer 3: Trait modifier (additive, applied as multiplier) ---
+  if (player.traits && player.traits.length > 0) {
+    const traitEffects = evaluateTraits(player, matchState);
+    const traitVal = traitEffects.actionModifiers?.[actionName];
+    if (traitVal !== undefined) {
+      // traitVal is additive delta (e.g. +0.3 for throughBall with killer balls)
+      // convert to multiplier: 1.0 + delta
+      modifier *= (1.0 + traitVal);
+    }
+  }
+
+  // --- Layer 1: Team Strategy modifier ---
+  if (teamStrategy) {
+    switch (actionName) {
+      case 'pass':
+        modifier *= (teamStrategy._passingWeights?.short || 1.0);
+        break;
+      case 'throughBall':
+        modifier *= (teamStrategy._passingWeights?.through || 1.0);
+        break;
+      case 'boot':
+      case 'cleared':
+        modifier *= (teamStrategy._passingWeights?.long || 1.0);
+        break;
+      case 'shoot':
+        modifier *= (teamStrategy._tempoMultiplier?.pace || 1.0);
+        break;
+      case 'sprint':
+        modifier *= (teamStrategy._tempoMultiplier?.pace || 1.0);
+        break;
+      case 'tackle':
+      case 'slide':
+        modifier *= (teamStrategy._pressingMultiplier || 1.0);
+        break;
+    }
+  }
+
+  // Clamp to prevent degenerate 0 or absurdly high weights
+  return Math.max(0.05, Math.min(3.0, modifier));
+}
+
+/**
+ * Get all action weight modifiers for a player at once.
+ * @param {object} player
+ * @param {object} matchState
+ * @param {object} teamStrategy
+ * @returns {{[actionName]: number}}
+ */
+export function getModifiedActionWeights(player, matchState, teamStrategy) {
+  const actionNames = [
+    'shoot', 'throughBall', 'pass', 'cross', 'tackle',
+    'intercept', 'slide', 'run', 'sprint', 'cleared', 'boot',
+  ];
+  const weights = {};
+  for (const action of actionNames) {
+    weights[action] = calculateModifiedActionWeight(player, action, matchState, teamStrategy);
+  }
+  return weights;
+}
+
+/**
+ * Build the matchState object that traits and conditions need.
+ * Call this before evaluateTraits or calculateModifiedActionWeight.
+ *
+ * @param {object} matchDetails — current engine match state
+ * @param {number[]} ball — ball coordinates [x, y]
+ * @param {object} player — the evaluating player
+ * @returns {object} matchState suitable for evaluateTraits()
+ */
+export function buildActionMatchState(matchDetails, ball, player) {
+  const ballX = ball?.[0] || 0;
+  const ballY = ball?.[1] || 0;
+  const ballPossession = matchDetails.ball?.withPlayer
+    ? (matchDetails.ball?.withTeam === matchDetails.kickOffTeam?.teamID ? 'home' : 'away')
+    : 'loose';
+  return {
+    ball: [ballX, ballY],
+    ballPossession,
+    scenario: matchDetails.ball?.withPlayer === false ? 'loose' : 'possession',
+    freeKickDistance: matchDetails._freeKickDistance || 0,
+    iteration: matchDetails._halfIteration || 0,
+  };
+}
+
+/**
+ * Apply tactical modifiers to an action weight array (11-element array).
+ * Modifies the array in-place by multiplying each action's raw score
+ * by its calculated modifier.
+ *
+ * Index mapping:
+ *   0=shoot, 1=throughBall, 2=pass, 3=cross, 4=tackle,
+ *   5=intercept, 6=slide, 7=run, 8=sprint, 9=cleared, 10=boot
+ *
+ * @param {number[]} weightArray — raw action scores (will be mutated)
+ * @param {object} player — engine player
+ * @param {object} matchDetails — current match state
+ * @param {object} teamStr — team._strategy (optional)
+ */
+export function applyTacticalModifiers(weightArray, player, matchDetails, teamStr) {
+  if (!weightArray || !player) return weightArray;
+  const matchState = buildActionMatchState(matchDetails, [0, 0], player);
+  const modifiedWeights = getModifiedActionWeights(player, matchState, teamStr);
+  const indices = [
+    'shoot', 'throughBall', 'pass', 'cross', 'tackle',
+    'intercept', 'slide', 'run', 'sprint', 'cleared', 'boot',
+  ];
+  for (let i = 0; i < indices.length; i++) {
+    const mod = modifiedWeights[indices[i]];
+    if (mod !== undefined && mod !== 1.0) {
+      weightArray[i] = Math.round(weightArray[i] * mod);
+    }
+  }
+  return weightArray;
+}
 
 function selectAction(possibleActions) {
   let goodActions = []
@@ -22,6 +172,11 @@ function findPossActions(player, team, opposition, ballX, ballY, matchDetails) {
   if (hasBall === false) params = playerDoesNotHaveBall(player, ballX, ballY, ballZ, matchDetails)
   else if (originPOS[1] > (pitchHeight / 2)) params = bottomTeamPlayerHasBall(matchDetails, player, team, opposition)
   else params = topTeamPlayerHasBall(matchDetails, player, team, opposition)
+
+  // P4.4: Apply three-layer AI tactical modifiers (role + traits + strategy)
+  const teamStr = team._strategy || matchDetails._homeStrategy || matchDetails._awayStrategy || null;
+  applyTacticalModifiers(params, player, matchDetails, teamStr);
+
   return populatePossibleActions(possibleActions, player, matchDetails, ...params)
 }
 
@@ -31,8 +186,8 @@ function topTeamPlayerHasBall(matchDetails, player, team, opposition) {
   let {
     position, currentPOS, skill
   } = player
-  if (position === 'GK' && oppositionNearPlayer(playerInformation, 10, 25)) return [0, 0, 10, 0, 0, 0, 0, 10, 0, 40, 40]
-  else if (position === 'GK') return [0, 0, 50, 0, 0, 0, 0, 10, 0, 20, 20]
+  if (getPositionGroup(position) === 'GK' && oppositionNearPlayer(playerInformation, 10, 25)) return [0, 0, 10, 0, 0, 0, 0, 10, 0, 40, 40]
+  else if (getPositionGroup(position) === 'GK') return [0, 0, 50, 0, 0, 0, 0, 10, 0, 20, 20]
   else if (onBottomCornerBoundary(currentPOS, pitchWidth, pitchHeight)) return [0, 0, 20, 80, 0, 0, 0, 0, 0, 0, 0]
   else if (checkPositionInBottomPenaltyBox(currentPOS, pitchWidth, pitchHeight)) {
     return topTeamPlayerHasBallInBottomPenaltyBox(matchDetails, player, team, opposition)
@@ -42,17 +197,17 @@ function topTeamPlayerHasBall(matchDetails, player, team, opposition) {
   } else if (common.isBetween(currentPOS[1], (pitchHeight / 3), (pitchHeight - (pitchHeight / 3)))) {
     if (oppositionNearPlayer(playerInformation, 10, 10)) return [0, 20, 30, 20, 0, 0, 20, 0, 0, 0, 10]
     else if (skill.shooting > 85) return [10, 10, 30, 0, 0, 0, 50, 0, 0, 0, 0]
-    else if (position === 'LM' || position === 'CM' || position === 'RM') return [0, 10, 10, 10, 0, 0, 0, 30, 40, 0, 0]
-    else if (position === 'CDM') return [0, 5, 30, 5, 0, 0, 0, 30, 30, 0, 0]
+    else if (getPositionGroup(position) === 'CM' || getPositionGroup(position) === 'WM') return [0, 10, 10, 10, 0, 0, 0, 30, 40, 0, 0]
+    else if (getPositionGroup(position) === 'DM') return [0, 5, 30, 5, 0, 0, 0, 30, 30, 0, 0]
+    else if (getPositionGroup(position) === 'ST') return [0, 0, 0, 0, 0, 0, 0, 50, 50, 0, 0]
     else if (position === 'CAM') return [15, 20, 30, 5, 0, 0, 0, 15, 15, 0, 0]
-    else if (position === 'LW' || position === 'RW') return [5, 10, 10, 30, 0, 0, 0, 20, 25, 0, 0]
-    else if (position === 'ST') return [0, 0, 0, 0, 0, 0, 0, 50, 50, 0, 0]
+    else if (getPositionGroup(position) === 'WG') return [5, 10, 10, 30, 0, 0, 0, 20, 25, 0, 0]
     return [0, 0, 10, 0, 0, 0, 0, 60, 20, 0, 10]
   } else if (oppositionNearPlayer(playerInformation, 10, 10)) return [0, 0, 0, 0, 0, 0, 0, 10, 0, 70, 20]
-  else if (position === 'LM' || position === 'CM' || position === 'RM') return [0, 0, 30, 0, 0, 0, 0, 30, 40, 0, 0]
-  else if (position === 'CDM') return [0, 0, 40, 0, 0, 0, 0, 20, 20, 10, 10]
+  else if (getPositionGroup(position) === 'CM' || getPositionGroup(position) === 'WM') return [0, 0, 30, 0, 0, 0, 0, 30, 40, 0, 0]
+  else if (getPositionGroup(position) === 'DM') return [0, 0, 40, 0, 0, 0, 0, 20, 20, 10, 10]
   else if (position === 'CAM') return [0, 0, 20, 0, 0, 0, 0, 30, 30, 20, 0]
-  else if (position === 'LW' || position === 'RW') return [0, 0, 20, 20, 0, 0, 0, 30, 30, 0, 0]
+  else if (getPositionGroup(position) === 'WG') return [0, 0, 20, 20, 0, 0, 0, 30, 30, 0, 0]
   else if (position === 'ST') return [0, 0, 0, 0, 0, 0, 0, 50, 50, 0, 0]
   return [0, 0, 40, 0, 0, 0, 0, 30, 0, 20, 10]
 }
@@ -100,8 +255,8 @@ function bottomTeamPlayerHasBall(matchDetails, player, team, opposition) {
   let {
     position, currentPOS, skill
   } = player
-  if (position === 'GK' && oppositionNearPlayer(playerInformation, 10, 25)) return [0, 0, 10, 0, 0, 0, 0, 10, 0, 40, 40]
-  else if (position === 'GK') return [0, 0, 50, 0, 0, 0, 0, 10, 0, 20, 20]
+  if (getPositionGroup(position) === 'GK' && oppositionNearPlayer(playerInformation, 10, 25)) return [0, 0, 10, 0, 0, 0, 0, 10, 0, 40, 40]
+  else if (getPositionGroup(position) === 'GK') return [0, 0, 50, 0, 0, 0, 0, 10, 0, 20, 20]
   else if (onTopCornerBoundary(currentPOS, pitchWidth)) return [0, 0, 20, 80, 0, 0, 0, 0, 0, 0, 0]
   else if (checkPositionInTopPenaltyBox(currentPOS, pitchWidth, pitchHeight)) {
     return bottomTeamPlayerHasBallInTopPenaltyBox(matchDetails, player, team, opposition)
@@ -111,10 +266,10 @@ function bottomTeamPlayerHasBall(matchDetails, player, team, opposition) {
   } else if (common.isBetween(currentPOS[1], (pitchHeight / 3), (2 * (pitchHeight / 3)))) {
     return bottomTeamPlayerHasBallInMiddle(playerInformation, position, skill)
   } else if (oppositionNearPlayer(playerInformation, 10, 10)) return [0, 0, 0, 0, 0, 0, 0, 10, 0, 70, 20]
-  else if (position === 'LM' || position === 'CM' || position === 'RM') return [0, 0, 30, 0, 0, 0, 0, 30, 40, 0, 0]
-  else if (position === 'CDM') return [0, 0, 40, 0, 0, 0, 0, 20, 20, 10, 10]
+  else if (getPositionGroup(position) === 'CM' || getPositionGroup(position) === 'WM') return [0, 0, 30, 0, 0, 0, 0, 30, 40, 0, 0]
+  else if (getPositionGroup(position) === 'DM') return [0, 0, 40, 0, 0, 0, 0, 20, 20, 10, 10]
   else if (position === 'CAM') return [0, 0, 20, 0, 0, 0, 0, 30, 30, 20, 0]
-  else if (position === 'LW' || position === 'RW') return [0, 0, 20, 20, 0, 0, 0, 30, 30, 0, 0]
+  else if (getPositionGroup(position) === 'WG') return [0, 0, 20, 20, 0, 0, 0, 30, 30, 0, 0]
   else if (position === 'ST') return [0, 0, 0, 0, 0, 0, 0, 50, 50, 0, 0]
   return [0, 0, 30, 0, 0, 0, 0, 50, 0, 10, 10]
 }
@@ -122,10 +277,10 @@ function bottomTeamPlayerHasBall(matchDetails, player, team, opposition) {
 function bottomTeamPlayerHasBallInMiddle(playerInformation, position, skill) {
   if (oppositionNearPlayer(playerInformation, 10, 10)) return [0, 20, 30, 20, 0, 0, 0, 20, 0, 0, 10]
   else if (skill.shooting > 85) return [10, 10, 30, 0, 0, 0, 0, 50, 0, 0, 0]
-  else if (position === 'LM' || position === 'CM' || position === 'RM') return [0, 10, 10, 10, 0, 0, 0, 30, 40, 0, 0]
-  else if (position === 'CDM') return [0, 5, 30, 5, 0, 0, 0, 30, 30, 0, 0]
+  else if (getPositionGroup(position) === 'CM' || getPositionGroup(position) === 'WM') return [0, 10, 10, 10, 0, 0, 0, 30, 40, 0, 0]
+  else if (getPositionGroup(position) === 'DM') return [0, 5, 30, 5, 0, 0, 0, 30, 30, 0, 0]
   else if (position === 'CAM') return [15, 20, 30, 5, 0, 0, 0, 15, 15, 0, 0]
-  else if (position === 'LW' || position === 'RW') return [5, 10, 10, 30, 0, 0, 0, 20, 25, 0, 0]
+  else if (getPositionGroup(position) === 'WG') return [5, 10, 10, 30, 0, 0, 0, 20, 25, 0, 0]
   else if (position === 'ST') return [0, 0, 0, 0, 0, 0, 0, 50, 50, 0, 0]
   return [0, 0, 10, 0, 0, 0, 0, 60, 20, 0, 10]
 }
@@ -193,54 +348,89 @@ function playerDoesNotHaveBall(player, ballX, ballY, ballZ, matchDetails) {
   let {
     position, currentPOS, originPOS
   } = player
-  if (position === 'GK') return [0, 0, 0, 0, 0, 0, 0, 60, 40, 0, 0]
+  if (getPositionGroup(position) === 'GK') return [0, 0, 0, 0, 0, 0, 0, 60, 40, 0, 0]
   else if (common.isBetween(ballX, -20, 20) && common.isBetween(ballY, -20, 20)) {
-    return noBallNotGK2CloseBall(matchDetails, currentPOS, originPOS, pitchWidth, pitchHeight)
+    return noBallNotGK2CloseBall(matchDetails, player, pitchWidth, pitchHeight)
   } else if (common.isBetween(ballX, -40, 40) && common.isBetween(ballY, -40, 40)) {
-    return noBallNotGK4CloseBall(matchDetails, currentPOS, originPOS, pitchWidth, pitchHeight)
+    return noBallNotGK4CloseBall(matchDetails, player, pitchWidth, pitchHeight)
   } else if (common.isBetween(ballX, -80, 80) && common.isBetween(ballY, -80, 80)) {
-    if (matchDetails.ball.withPlayer === false) return [0, 0, 0, 0, 0, 0, 0, 60, 40, 0, 0]
+    if (matchDetails.ball.withPlayer === false) {
+      if (isDefensivePosition(position)) return [0, 0, 0, 0, 15, 10, 0, 40, 35, 0, 0]
+      if (isAttackingPosition(position)) return [0, 0, 0, 0, 0, 0, 0, 70, 30, 0, 0]
+      return [0, 0, 0, 0, 0, 0, 0, 60, 40, 0, 0]
+    }
+    if (isDefensivePosition(position)) return [0, 0, 0, 0, 10, 40, 10, 20, 20, 0, 0]
+    if (isAttackingPosition(position)) return [0, 0, 0, 0, 0, 20, 0, 40, 40, 0, 0]
     return [0, 0, 0, 0, 0, 40, 0, 30, 30, 0, 0]
   }
+  if (isDefensivePosition(position)) return [0, 0, 0, 0, 15, 15, 0, 35, 25, 0, 0]
+  if (isAttackingPosition(position)) return [0, 0, 0, 0, 0, 5, 0, 55, 35, 0, 0]
   return [0, 0, 0, 0, 0, 10, 0, 50, 30, 0, 0]
 }
 
-function noBallNotGK4CloseBall(matchDetails, currentPOS, originPOS, pitchWidth, pitchHeight) {
+function noBallNotGK4CloseBall(matchDetails, player, pitchWidth, pitchHeight) {
+  const { currentPOS, originPOS, position } = player;
   if (originPOS[1] > (pitchHeight / 2)) {
-    return noBallNotGK4CloseBallBottomTeam(matchDetails, currentPOS, pitchWidth, pitchHeight)
+    return noBallNotGK4CloseBallBottomTeam(matchDetails, player, pitchWidth, pitchHeight)
   }
   if (checkPositionInTopPenaltyBox(currentPOS, pitchWidth, pitchHeight)) {
     if (matchDetails.ball.withPlayer === false) return [0, 0, 0, 0, 0, 0, 0, 20, 80, 0, 0]
     return [0, 0, 0, 0, 40, 0, 20, 10, 30, 0, 0]
-  } else if (matchDetails.ball.withPlayer === false) return [0, 0, 0, 0, 0, 0, 0, 20, 80, 0, 0]
+  }
+  if (matchDetails.ball.withPlayer === false) {
+    if (isDefensivePosition(position)) return [0, 0, 0, 0, 10, 5, 0, 20, 65, 0, 0]
+    return [0, 0, 0, 0, 0, 0, 0, 20, 80, 0, 0]
+  }
+  if (isDefensivePosition(position)) return [0, 0, 0, 0, 60, 0, 40, 0, 0, 0, 0]
   return [0, 0, 0, 0, 50, 0, 50, 0, 0, 0, 0]
 }
 
-function noBallNotGK4CloseBallBottomTeam(matchDetails, currentPOS, pitchWidth, pitchHeight) {
+function noBallNotGK4CloseBallBottomTeam(matchDetails, player, pitchWidth, pitchHeight) {
+  const { currentPOS, position } = player;
   if (checkPositionInBottomPenaltyBox(currentPOS, pitchWidth, pitchHeight)) {
     if (matchDetails.ball.withPlayer === false) return [0, 0, 0, 0, 0, 0, 0, 20, 80, 0, 0]
     return [0, 0, 0, 0, 40, 0, 20, 10, 30, 0, 0]
-  } else if (matchDetails.ball.withPlayer === false) return [0, 0, 0, 0, 0, 0, 0, 20, 80, 0, 0]
+  }
+  if (matchDetails.ball.withPlayer === false) {
+    if (isDefensivePosition(position)) return [0, 0, 0, 0, 10, 5, 0, 20, 65, 0, 0]
+    return [0, 0, 0, 0, 0, 0, 0, 20, 80, 0, 0]
+  }
+  if (isDefensivePosition(position)) return [0, 0, 0, 0, 60, 0, 40, 0, 0, 0, 0]
   return [0, 0, 0, 0, 50, 0, 50, 0, 0, 0, 0]
 }
 
-function noBallNotGK2CloseBall(matchDetails, currentPOS, originPOS, pitchWidth, pitchHeight) {
+function noBallNotGK2CloseBall(matchDetails, player, pitchWidth, pitchHeight) {
+  const { currentPOS, originPOS, position } = player;
   if (originPOS[1] > (pitchHeight / 2)) {
-    return noBallNotGK2CloseBallBottomTeam(matchDetails, currentPOS, pitchWidth, pitchHeight)
+    return noBallNotGK2CloseBallBottomTeam(matchDetails, player, pitchWidth, pitchHeight)
   }
   if (checkPositionInTopPenaltyBox(currentPOS, pitchWidth, pitchHeight)) {
     if (matchDetails.ball.withPlayer === false) return [0, 0, 0, 0, 0, 0, 0, 20, 80, 0, 0]
     return [0, 0, 0, 0, 40, 0, 20, 10, 30, 0, 0]
-  } else if (matchDetails.ball.withPlayer === false) return [0, 0, 0, 0, 0, 0, 0, 20, 80, 0, 0]
+  }
+  if (matchDetails.ball.withPlayer === false) {
+    if (isDefensivePosition(position)) return [0, 0, 0, 0, 10, 5, 0, 25, 60, 0, 0]
+    if (isAttackingPosition(position)) return [0, 0, 0, 0, 0, 0, 0, 30, 70, 0, 0]
+    return [0, 0, 0, 0, 0, 0, 0, 20, 80, 0, 0]
+  }
+  if (isDefensivePosition(position)) return [0, 0, 0, 0, 80, 10, 10, 0, 0, 0, 0]
+  if (isAttackingPosition(position)) return [0, 0, 0, 0, 50, 20, 30, 0, 0, 0, 0]
   return [0, 0, 0, 0, 70, 10, 20, 0, 0, 0, 0]
 }
 
-function noBallNotGK2CloseBallBottomTeam(matchDetails, currentPOS, pitchWidth, pitchHeight) {
+function noBallNotGK2CloseBallBottomTeam(matchDetails, player, pitchWidth, pitchHeight) {
+  const { currentPOS, position } = player;
   if (checkPositionInBottomPenaltyBox(currentPOS, pitchWidth, pitchHeight)) {
     if (matchDetails.ball.withPlayer === false) return [0, 0, 0, 0, 0, 0, 0, 20, 80, 0, 0]
     return [0, 0, 0, 0, 50, 0, 10, 20, 20, 0, 0]
   }
-  if (matchDetails.ball.withPlayer === false) return [0, 0, 0, 0, 0, 0, 0, 20, 80, 0, 0]
+  if (matchDetails.ball.withPlayer === false) {
+    if (isDefensivePosition(position)) return [0, 0, 0, 0, 10, 5, 0, 25, 60, 0, 0]
+    if (isAttackingPosition(position)) return [0, 0, 0, 0, 0, 0, 0, 30, 70, 0, 0]
+    return [0, 0, 0, 0, 0, 0, 0, 20, 80, 0, 0]
+  }
+  if (isDefensivePosition(position)) return [0, 0, 0, 0, 80, 10, 10, 0, 0, 0, 0]
+  if (isAttackingPosition(position)) return [0, 0, 0, 0, 50, 20, 30, 0, 0, 0, 0]
   return [0, 0, 0, 0, 70, 10, 20, 0, 0, 0, 0]
 }
 

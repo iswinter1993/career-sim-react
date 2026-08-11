@@ -1,4 +1,7 @@
 import * as common from './common.js'
+import { ALL_POSITIONS } from './positionGroup.js'
+import { validateFormationName as _validateFormationName } from './formation.js'
+import { validateRoleForPosition } from './tactics.js'
 
 function validateTeam(team) {
   if (typeof (team) != `object`) team = JSON.parse(team)
@@ -37,6 +40,16 @@ function validatePlayerObjects(player) {
       throw new Error(`Player must contain JSON variable: ${obj}`)
     }
   }
+
+  // Validate position against the canonical 12-position list.
+  // Unknown positions are mapped to 'CM' instead of crashing so that
+  // slightly-malformed squad data doesn't break the whole initialisation.
+  const pos = player.position;
+  if (pos && !ALL_POSITIONS.includes(pos)) {
+    console.warn(`[validate] Unknown position "${pos}" for player "${player.name}" — falling back to CM`);
+    player.position = 'CM';
+  }
+
   validatePlayerSkills(player.skill)
 }
 
@@ -48,6 +61,14 @@ function validatePlayerObjectsIteration(player) {
       throw new Error(`Player must contain JSON variable: ${obj}`)
     }
   }
+
+  // Validate position (as above, fall back rather than crash)
+  const pos = player.position;
+  if (pos && !ALL_POSITIONS.includes(pos)) {
+    console.warn(`[validate] Unknown position "${pos}" for player "${player.name}" — falling back to CM`);
+    player.position = 'CM';
+  }
+
   validatePlayerSkills(player.skill)
   validateStats(player.stats)
 }
@@ -147,6 +168,38 @@ function validatePlayerPositions(matchDetails) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// New validation helpers (P0.4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate that a formation name string refers to a known formation.
+ * Returns the canonical name, or '4-4-2' as fallback.
+ *
+ * @param {string} name
+ * @returns {string} canonical formation name
+ */
+function validateFormationName(name) {
+  if (_validateFormationName(name)) return name;
+  console.warn(`[validate] Unknown formation "${name}" — falling back to 4-4-2`);
+  return '4-4-2';
+}
+
+/**
+ * Validate that a role is appropriate for a position.  If the role is invalid
+ * for the position, returns the default role for that position instead.
+ *
+ * @param {string} position
+ * @param {string} role
+ * @returns {string} valid role key
+ */
+function validateRoleAssignment(position, role) {
+  if (validateRoleForPosition(role, position)) return role;
+  const { getDefaultRole } = require('./tactics.js');
+  console.warn(`[validate] Role "${role}" invalid for position "${position}" — falling back to default`);
+  return getDefaultRole(position);
+}
+
 export {
   validateTeam,
   validateTeamSecondHalf,
@@ -154,5 +207,7 @@ export {
   validatePitch,
   validateArguments,
   validateMatchDetails,
-  validatePlayerPositions
+  validatePlayerPositions,
+  validateFormationName,
+  validateRoleAssignment,
 }

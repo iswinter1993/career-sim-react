@@ -1,4 +1,5 @@
 import * as common from './common.js'
+import { isDefensivePosition, isMidfieldPosition, isAttackingPosition, getPositionGroup, isInGroup, isWidePosition } from './positionGroup.js'
 
 function setTopFreekick(matchDetails) {
   common.removeBallFromAllPlayers(matchDetails)
@@ -49,11 +50,11 @@ function setTopOneHundredYPos(matchDetails, attack, defence) {
   ball.withTeam = attack.teamID
   ball.direction = 'south'
   for (let player of attack.players) {
-    if (player.position == 'GK') player.currentPOS = matchDetails.ball.position.map(x => x)
+    if (getPositionGroup(player.position) === 'GK') player.currentPOS = matchDetails.ball.position.map(x => x)
     if (player.position != 'GK') player.currentPOS = player.originPOS.map(x => x)
   }
   for (let player of defence.players) {
-    if (player.position == 'GK') player.currentPOS = player.originPOS.map(x => x)
+    if (getPositionGroup(player.position) === 'GK') player.currentPOS = player.originPOS.map(x => x)
     if (player.position != 'GK') player.currentPOS = [player.originPOS[0], common.upToMin(player.originPOS[1] - 100, 0)]
   }
   matchDetails.endIteration = true
@@ -70,11 +71,11 @@ function setBottomOneHundredYPos(matchDetails, attack, defence) {
   ball.withTeam = attack.teamID
   ball.direction = 'north'
   for (let player of attack.players) {
-    if (player.position == 'GK') player.currentPOS = matchDetails.ball.position.map(x => x)
+    if (getPositionGroup(player.position) === 'GK') player.currentPOS = matchDetails.ball.position.map(x => x)
     if (player.position != 'GK') player.currentPOS = player.originPOS.map(x => x)
   }
   for (let player of defence.players) {
-    if (player.position == 'GK') player.currentPOS = player.originPOS.map(x => x)
+    if (getPositionGroup(player.position) === 'GK') player.currentPOS = player.originPOS.map(x => x)
     if (player.position != 'GK') {
       player.currentPOS = [player.originPOS[0], common.upToMax(player.originPOS[1] + 100, pitchHeight)]
     }
@@ -96,7 +97,7 @@ function setTopOneHundredToHalfwayYPos(matchDetails, attack, defence) {
   ball.direction = 'south'
   for (let player of attack.players) {
     if (kickPlayer.position == 'GK') {
-      if (player.position == 'GK') player.currentPOS = ball.position.map(x => x)
+      if (getPositionGroup(player.position) === 'GK') player.currentPOS = ball.position.map(x => x)
       if (player.name != kickPlayer.name) {
         let newYPOS = common.upToMax(player.originPOS[1] + 300, pitchHeight * 0.9)
         player.currentPOS = [player.originPOS[0], parseInt(newYPOS, 10)]
@@ -107,10 +108,16 @@ function setTopOneHundredToHalfwayYPos(matchDetails, attack, defence) {
       else if (player.position == 'GK') {
         let maxYPOSCheck = parseInt(common.upToMax(newYPOS, pitchHeight * 0.25), 10)
         player.currentPOS = [player.originPOS[0], maxYPOSCheck]
-      } else if (['CB', 'LB', 'RB'].includes(player.position)) {
-        let maxYPOSCheck = parseInt(common.upToMax(newYPOS, pitchHeight * 0.5), 10)
-        player.currentPOS = [player.originPOS[0], maxYPOSCheck]
-      } else if (['CM', 'LM', 'RM'].includes(player.position)) {
+      } else if (isDefensivePosition(player.position) && player.position !== 'CDM') {
+        // CDM stays a bit further forward than CB/FB in freekicks
+        if (player.position === 'CDM') {
+          let maxYPOSCheck = parseInt(common.upToMax(newYPOS, pitchHeight * 0.65), 10)
+          player.currentPOS = [player.originPOS[0], maxYPOSCheck]
+        } else {
+          let maxYPOSCheck = parseInt(common.upToMax(newYPOS, pitchHeight * 0.5), 10)
+          player.currentPOS = [player.originPOS[0], maxYPOSCheck]
+        }
+      } else if (isMidfieldPosition(player.position)) {
         let maxYPOSCheck = parseInt(common.upToMax(newYPOS, pitchHeight * 0.75), 10)
         player.currentPOS = [player.originPOS[0], maxYPOSCheck]
       } else {
@@ -121,12 +128,12 @@ function setTopOneHundredToHalfwayYPos(matchDetails, attack, defence) {
   }
   for (let player of defence.players) {
     if (kickPlayer.position == 'GK') {
-      if (player.position == 'GK') player.currentPOS = player.originPOS.map(x => x)
+      if (getPositionGroup(player.position) === 'GK') player.currentPOS = player.originPOS.map(x => x)
       if (player.position != 'GK') {
         player.currentPOS = [player.originPOS[0], common.upToMin(player.originPOS[1] - 100, 0)]
       }
-    } else if (['GK', 'CB', 'LB', 'RB'].includes(player.position)) player.currentPOS = player.originPOS.map(x => x)
-    else if (['CM', 'LM', 'RM'].includes(player.position)) {
+    } else if (isDefensivePosition(player.position)) player.currentPOS = player.originPOS.map(x => x)
+    else if (isMidfieldPosition(player.position)) {
       player.currentPOS = [player.originPOS[0], parseInt((pitchHeight * 0.75) + 5, 10)]
     } else {
       player.currentPOS = [player.originPOS[0], parseInt(pitchHeight * 0.5, 10)]
@@ -149,7 +156,7 @@ function setBottomOneHundredToHalfwayYPos(matchDetails, attack, defence) {
   ball.direction = 'north'
   for (let player of attack.players) {
     if (kickPlayer.position == 'GK') {
-      if (player.position == 'GK') player.currentPOS = ball.position.map(x => x)
+      if (getPositionGroup(player.position) === 'GK') player.currentPOS = ball.position.map(x => x)
       if (player.name != kickPlayer.name) {
         let newYPOS = common.upToMin(player.originPOS[1] - 300, pitchHeight * 0.1)
         player.currentPOS = [player.originPOS[0], parseInt(newYPOS, 10)]
@@ -160,10 +167,16 @@ function setBottomOneHundredToHalfwayYPos(matchDetails, attack, defence) {
       else if (player.position == 'GK') {
         let maxYPOSCheck = parseInt(common.upToMin(newYPOS, pitchHeight * 0.75), 10)
         player.currentPOS = [player.originPOS[0], maxYPOSCheck]
-      } else if (['CB', 'LB', 'RB'].includes(player.position)) {
-        let maxYPOSCheck = parseInt(common.upToMin(newYPOS, pitchHeight * 0.5), 10)
-        player.currentPOS = [player.originPOS[0], maxYPOSCheck]
-      } else if (['CM', 'LM', 'RM'].includes(player.position)) {
+      } else if (isDefensivePosition(player.position) && player.position !== 'GK') {
+        // CDM stays a bit further forward
+        if (player.position === 'CDM') {
+          let maxYPOSCheck = parseInt(common.upToMin(newYPOS, pitchHeight * 0.35), 10)
+          player.currentPOS = [player.originPOS[0], maxYPOSCheck]
+        } else {
+          let maxYPOSCheck = parseInt(common.upToMin(newYPOS, pitchHeight * 0.5), 10)
+          player.currentPOS = [player.originPOS[0], maxYPOSCheck]
+        }
+      } else if (isMidfieldPosition(player.position)) {
         let maxYPOSCheck = parseInt(common.upToMin(newYPOS, pitchHeight * 0.25), 10)
         player.currentPOS = [player.originPOS[0], maxYPOSCheck]
       } else {
@@ -174,13 +187,13 @@ function setBottomOneHundredToHalfwayYPos(matchDetails, attack, defence) {
   }
   for (let player of defence.players) {
     if (kickPlayer.position == 'GK') {
-      if (player.position == 'GK') player.currentPOS = player.originPOS.map(x => x)
+      if (getPositionGroup(player.position) === 'GK') player.currentPOS = player.originPOS.map(x => x)
       if (player.position != 'GK') {
         let newYPOS = common.upToMax(player.originPOS[1] + 100, pitchHeight)
         player.currentPOS = [player.originPOS[0], parseInt(newYPOS, 10)]
       }
-    } else if (['GK', 'CB', 'LB', 'RB'].includes(player.position)) player.currentPOS = player.originPOS.map(x => x)
-    else if (['CM', 'LM', 'RM'].includes(player.position)) {
+    } else if (isDefensivePosition(player.position)) player.currentPOS = player.originPOS.map(x => x)
+    else if (isMidfieldPosition(player.position)) {
       player.currentPOS = [player.originPOS[0], parseInt((pitchHeight * 0.25) - 5, 10)]
     } else {
       player.currentPOS = [player.originPOS[0], parseInt(pitchHeight * 0.5, 10)]
@@ -204,11 +217,12 @@ function setTopHalfwayToBottomQtrYPos(matchDetails, attack, defence) {
   ball.direction = (ballInCentre) ? 'south' : (ballLeft) ? 'southeast' : 'southwest'
   kickPlayer.currentPOS = ball.position.map(x => x)
   for (let player of attack.players) {
-    if (player.position == 'GK') player.currentPOS = [player.originPOS[0], parseInt(pitchHeight * 0.25, 10)]
-    else if (['CB', 'LB', 'RB'].includes(player.position)) {
+    if (getPositionGroup(player.position) === 'GK') player.currentPOS = [player.originPOS[0], parseInt(pitchHeight * 0.25, 10)]
+    else if (isDefensivePosition(player.position) && player.position !== 'GK') {
+      // CB/FB/CDM: push forward but stay cautious
       let maxYPOSCheck = parseInt(common.upToMax(ball.position[1] - 100, pitchHeight * 0.5), 10)
       player.currentPOS = [player.originPOS[0], maxYPOSCheck]
-    } else if (['CM', 'LM', 'RM'].includes(player.position)) {
+    } else if (isMidfieldPosition(player.position)) {
       let maxYPOSCheck = common.upToMax(ball.position[1] + common.getRandomNumber(150, 300), pitchHeight * 0.75)
       if (player.name != kickPlayer.name) player.currentPOS = [player.originPOS[0], parseInt(maxYPOSCheck, 10)]
     } else {
@@ -217,9 +231,9 @@ function setTopHalfwayToBottomQtrYPos(matchDetails, attack, defence) {
     }
   }
   for (let player of defence.players) {
-    if (['GK', 'CB', 'LB', 'RB'].includes(player.position)) {
+    if (isDefensivePosition(player.position)) {
       player.currentPOS = player.originPOS.map(x => x)
-    } else if (['CM', 'LM', 'RM'].includes(player.position)) {
+    } else if (isMidfieldPosition(player.position)) {
       player.currentPOS = [player.originPOS[0], parseInt(pitchHeight * 0.75, 10)]
     } else {
       player.currentPOS = [player.originPOS[0], parseInt(pitchHeight * 0.5, 10)]
@@ -243,11 +257,11 @@ function setBottomHalfwayToTopQtrYPos(matchDetails, attack, defence) {
   ball.direction = (ballInCentre) ? 'north' : (ballLeft) ? 'northeast' : 'northwest'
   kickPlayer.currentPOS = ball.position.map(x => x)
   for (let player of attack.players) {
-    if (player.position == 'GK') player.currentPOS = [player.originPOS[0], parseInt(pitchHeight * 0.75, 10)]
-    else if (['CB', 'LB', 'RB'].includes(player.position)) {
+    if (getPositionGroup(player.position) === 'GK') player.currentPOS = [player.originPOS[0], parseInt(pitchHeight * 0.75, 10)]
+    else if (isDefensivePosition(player.position) && player.position !== 'GK') {
       let maxYPOSCheck = parseInt(common.upToMin(ball.position[1] + 100, pitchHeight * 0.5), 10)
       player.currentPOS = [player.originPOS[0], maxYPOSCheck]
-    } else if (['CM', 'LM', 'RM'].includes(player.position)) {
+    } else if (isMidfieldPosition(player.position)) {
       let maxYPOSCheck = common.upToMin(ball.position[1] - common.getRandomNumber(150, 300), pitchHeight * 0.25)
       if (player.name != kickPlayer.name) player.currentPOS = [player.originPOS[0], parseInt(maxYPOSCheck, 10)]
     } else {
@@ -256,9 +270,9 @@ function setBottomHalfwayToTopQtrYPos(matchDetails, attack, defence) {
     }
   }
   for (let player of defence.players) {
-    if (['GK', 'CB', 'LB', 'RB'].includes(player.position)) {
+    if (isDefensivePosition(player.position)) {
       player.currentPOS = player.originPOS.map(x => x)
-    } else if (['CM', 'LM', 'RM'].includes(player.position)) {
+    } else if (isMidfieldPosition(player.position)) {
       player.currentPOS = [player.originPOS[0], parseInt(pitchHeight * 0.25, 10)]
     } else {
       player.currentPOS = [player.originPOS[0], parseInt(pitchHeight * 0.5, 10)]
@@ -282,11 +296,15 @@ function setTopBottomQtrCentreYPos(matchDetails, attack, defence) {
   ball.direction = (ballInCentre) ? 'south' : (ballLeft) ? 'southeast' : 'southwest'
   kickPlayer.currentPOS = ball.position.map(x => x)
   for (let player of attack.players) {
-    if (player.position == 'GK') player.currentPOS = [player.originPOS[0], parseInt(pitchHeight * 0.25, 10)]
-    else if (['CB', 'LB', 'RB'].includes(player.position)) {
+    if (getPositionGroup(player.position) === 'GK') player.currentPOS = [player.originPOS[0], parseInt(pitchHeight * 0.25, 10)]
+    else if (isDefensivePosition(player.position) && player.position !== 'GK') {
       if (player.position == 'CB') {
         player.currentPOS = [player.originPOS[0], parseInt(pitchHeight * 0.5, 10)]
-      } else if (player.position == 'LB' || player.position == 'RB') {
+      } else if (isWidePosition(player.position) && isDefensivePosition(player.position)) {
+        player.currentPOS = [player.originPOS[0], parseInt(pitchHeight * 0.66, 10)]
+      } else if (player.position === 'CDM') {
+        player.currentPOS = [player.originPOS[0], parseInt(pitchHeight * 0.58, 10)]
+      } else {
         player.currentPOS = [player.originPOS[0], parseInt(pitchHeight * 0.66, 10)]
       }
     } else if (player.name != kickPlayer.name) {
@@ -299,8 +317,8 @@ function setTopBottomQtrCentreYPos(matchDetails, attack, defence) {
     let midWayFromBalltoGoalX = parseInt((ball.position[0] - ballDistanceFromGoalX) / 2, 10)
     let ballDistanceFromGoalY = (pitchHeight - ball.position[1])
     let midWayFromBalltoGoalY = parseInt((ball.position[1] - ballDistanceFromGoalY) / 2, 10)
-    if (player.position == 'GK') player.currentPOS = player.currentPOS = player.originPOS.map(x => x)
-    else if (['CB', 'LB', 'RB'].includes(player.position)) {
+    if (getPositionGroup(player.position) === 'GK') player.currentPOS = player.currentPOS = player.originPOS.map(x => x)
+    else if (isDefensivePosition(player.position) && player.position !== 'GK') {
       player.currentPOS = [midWayFromBalltoGoalX + playerSpace, midWayFromBalltoGoalY]
       playerSpace += 2
     } else {
@@ -325,11 +343,15 @@ function setBottomUpperQtrCentreYPos(matchDetails, attack, defence) {
   ball.direction = (ballInCentre) ? 'north' : (ballLeft) ? 'northeast' : 'northwest'
   kickPlayer.currentPOS = ball.position.map(x => x)
   for (let player of attack.players) {
-    if (player.position == 'GK') player.currentPOS = [player.originPOS[0], parseInt(pitchHeight * 0.75, 10)]
-    else if (['CB', 'LB', 'RB'].includes(player.position)) {
+    if (getPositionGroup(player.position) === 'GK') player.currentPOS = [player.originPOS[0], parseInt(pitchHeight * 0.75, 10)]
+    else if (isDefensivePosition(player.position) && player.position !== 'GK') {
       if (player.position == 'CB') {
         player.currentPOS = [player.originPOS[0], parseInt(pitchHeight * 0.5, 10)]
-      } else if (player.position == 'LB' || player.position == 'RB') {
+      } else if (isWidePosition(player.position) && isDefensivePosition(player.position)) {
+        player.currentPOS = [player.originPOS[0], parseInt(pitchHeight * 0.33, 10)]
+      } else if (player.position === 'CDM') {
+        player.currentPOS = [player.originPOS[0], parseInt(pitchHeight * 0.42, 10)]
+      } else {
         player.currentPOS = [player.originPOS[0], parseInt(pitchHeight * 0.33, 10)]
       }
     } else if (player.name != kickPlayer.name) {
@@ -341,8 +363,8 @@ function setBottomUpperQtrCentreYPos(matchDetails, attack, defence) {
     let ballDistanceFromGoalX = ball.position[0] - (pitchWidth / 2)
     let midWayFromBalltoGoalX = parseInt((ball.position[0] - ballDistanceFromGoalX) / 2, 10)
     let midWayFromBalltoGoalY = parseInt(ball.position[1] / 2, 10)
-    if (player.position == 'GK') player.currentPOS = player.currentPOS = player.originPOS.map(x => x)
-    else if (['CB', 'LB', 'RB'].includes(player.position)) {
+    if (getPositionGroup(player.position) === 'GK') player.currentPOS = player.currentPOS = player.originPOS.map(x => x)
+    else if (isDefensivePosition(player.position) && player.position !== 'GK') {
       player.currentPOS = [midWayFromBalltoGoalX + playerSpace, midWayFromBalltoGoalY]
       playerSpace += 2
     } else {
@@ -368,9 +390,10 @@ function setTopLowerFinalQtrBylinePos(matchDetails, attack, defence) {
   for (let player of attack.players) {
     let { playerID, position, originPOS } = player
     if (position == 'GK') player.currentPOS = [originPOS[0], parseInt(pitchHeight * 0.25, 10)]
-    else if (['CB', 'LB', 'RB'].includes(position)) {
+    else if (isDefensivePosition(position) && position !== 'GK') {
       if (position == 'CB') player.currentPOS = [originPOS[0], parseInt(pitchHeight * 0.5, 10)]
-      else if (['LB', 'RB'].includes(position)) player.currentPOS = [originPOS[0], parseInt(pitchHeight * 0.66, 10)]
+      else if (position === 'LB' || position === 'RB') player.currentPOS = [originPOS[0], parseInt(pitchHeight * 0.66, 10)]
+      else if (position === 'CDM') player.currentPOS = [originPOS[0], parseInt(pitchHeight * 0.58, 10)]
     } else if (playerID != kickPlayer.playerID) player.currentPOS = common.getRandomBottomPenaltyPosition(matchDetails)
   }
   let playerSpace = common.upToMax(ball.position[1] + 3, pitchHeight)
@@ -379,7 +402,7 @@ function setTopLowerFinalQtrBylinePos(matchDetails, attack, defence) {
     let ballDistanceFromGoalX = ball.position[0] - (pitchWidth / 2)
     let midWayFromBalltoGoalX = parseInt((ball.position[0] - ballDistanceFromGoalX) / 2, 10)
     if (position == 'GK') player.currentPOS = player.currentPOS = originPOS.map(x => x)
-    else if (['CB', 'LB', 'RB'].includes(position)) {
+    else if (isDefensivePosition(position) && position !== 'GK') {
       player.currentPOS = [midWayFromBalltoGoalX, playerSpace]
       playerSpace -= 2
     } else player.currentPOS = common.getRandomBottomPenaltyPosition(matchDetails)
@@ -403,9 +426,10 @@ function setBottomLowerFinalQtrBylinePos(matchDetails, attack, defence) {
   for (let player of attack.players) {
     let { playerID, position, originPOS } = player
     if (position == 'GK') player.currentPOS = [originPOS[0], parseInt(pitchHeight * 0.75, 10)]
-    else if (['CB', 'LB', 'RB'].includes(position)) {
+    else if (isDefensivePosition(position) && position !== 'GK') {
       if (position == 'CB') player.currentPOS = [originPOS[0], parseInt(pitchHeight * 0.5, 10)]
-      else if (['LB', 'RB'].includes(position)) player.currentPOS = [originPOS[0], parseInt(pitchHeight * 0.33, 10)]
+      else if (position === 'LB' || position === 'RB') player.currentPOS = [originPOS[0], parseInt(pitchHeight * 0.33, 10)]
+      else if (position === 'CDM') player.currentPOS = [originPOS[0], parseInt(pitchHeight * 0.42, 10)]
     } else if (playerID != kickPlayer.playerID) player.currentPOS = common.getRandomTopPenaltyPosition(matchDetails)
   }
   let playerSpace = common.upToMin(ball.position[1] - 3, 0)
@@ -414,7 +438,7 @@ function setBottomLowerFinalQtrBylinePos(matchDetails, attack, defence) {
     let ballDistanceFromGoalX = ball.position[0] - (pitchWidth / 2)
     let midWayFromBalltoGoalX = parseInt((ball.position[0] - ballDistanceFromGoalX) / 2, 10)
     if (position == 'GK') player.currentPOS = player.currentPOS = originPOS.map(x => x)
-    else if (['CB', 'LB', 'RB'].includes(position)) {
+    else if (isDefensivePosition(position) && position !== 'GK') {
       player.currentPOS = [midWayFromBalltoGoalX, playerSpace]
       playerSpace += 2
     } else player.currentPOS = common.getRandomTopPenaltyPosition(matchDetails)
