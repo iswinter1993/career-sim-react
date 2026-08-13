@@ -802,21 +802,26 @@ export function rateAllPlayers(matchDetails) {
 
   const rateTeam = (players, statsMap, roles, side) => {
     return players.map((p) => {
-      const playerID = p.id || p.playerID;
-      const tracked = statsMap[playerID] || {};
+      // Tracker/role lookup key — the engine's (randomised) playerID.
+      const lookupID = p.id || p.playerID;
+      // Stable identity for the UI — prefer squadID, which survives the
+      // engine's setGameVariables playerID randomisation (so `player_self`
+      // maps back to the human player for MVP / growth / highlight logic).
+      const displayID = p.squadID || lookupID;
+      const tracked = statsMap[lookupID] || {};
       const derived = (tracked && Object.keys(tracked).length > 0)
         ? (typeof calculateDerivedStats === 'function' ? calculateDerivedStats(tracked) : tracked)
         : {};
 
       const position = p.position || 'CM';
-      const role = roles[playerID] || null;
+      const role = roles[lookupID] || null;
       const result = _getSideResult(matchDetails, side);
 
       // If we have tracked stats, use the new system
       if (Object.keys(derived).length > 0) {
         return {
-          playerID,
-          name: p.name || playerID,
+          playerID: displayID,
+          name: p.name || displayID,
           position,
           role,
           rating: calculateRating(
@@ -829,7 +834,9 @@ export function rateAllPlayers(matchDetails) {
       }
 
       // Legacy: use the old event-based system
-      return _legacyRatePlayer(matchDetails, playerID, p, role, side);
+      const legacy = _legacyRatePlayer(matchDetails, lookupID, p, role, side);
+      legacy.playerID = displayID;
+      return legacy;
     }).sort((a, b) => b.rating - a.rating);
   };
 

@@ -125,7 +125,10 @@ function MiniBoard({ formation, starters, playerID }) {
       {/* Player dots */}
       {fm.positions.map((slot, i) => {
         const px = M + (slot.x / 100) * (W - M * 2);
-        const py = M + (slot.y / 100) * (H - M * 2);
+        // slot.y is defined top-to-bottom (GK at top, matching the engine
+        // pitch). Invert it for display so the goalkeeper renders at the
+        // BOTTOM and strikers at the top — the standard tactics-board view.
+        const py = M + ((100 - slot.y) / 100) * (H - M * 2);
         const player = starters[i];
         const isPlayerSelf = player?.id === playerID;
         return (

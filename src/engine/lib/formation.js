@@ -15,6 +15,9 @@
 //   getDefaultFormation()                         → '4-4-2'
 //   countPositionSlots(formationName, position)   → number
 
+import { getPositionGroup } from './positionGroup.js';
+import { getMentalityStrategy } from './mentality.js';
+
 // ===========================================================================
 // FORMATION MATRIX
 // ===========================================================================
@@ -93,11 +96,11 @@ export const FORMATION_MATRIX = {
     CBL: { x: 180, y: 150 },
     CB:  { x: 340, y: 130 },
     CBR: { x: 500, y: 150 },
-    RM:  { x: 60,  y: 340 },
+    LM:  { x: 60,  y: 340 },
     CML: { x: 200, y: 340 },
     CM:  { x: 340, y: 320 },
     CMR: { x: 480, y: 340 },
-    LM:  { x: 620, y: 340 },
+    RM:  { x: 620, y: 340 },
     STL: { x: 280, y: 600 },
     STR: { x: 400, y: 600 },
   },
@@ -336,8 +339,13 @@ export function getFormationPositions(formationName, pitchSize, mentality) {
 
 /**
  * Calculate originPOS for each starter based on the formation.
- * Handles paired positions (CB×2, CM×2, ST×2, etc.) by cycling through
- * the available slot coordinates for that position.
+ *
+ * Uses a slot-pool algorithm to prevent overlaps:
+ *   1. Pass 1 — exact position matches are assigned first.
+ *   2. Pass 2 — remaining players pick the best remaining slot by group proximity.
+ *
+ * This avoids the old per-position-counter bug where LM and RM both
+ * falling back to CM would each get index 0 of the CM slots, overlapping.
  *
  * @param {Array}  starters — [{ position, … }, …]  (11 players)
  * @param {string} formationName
@@ -348,38 +356,121 @@ export function getFormationPositions(formationName, pitchSize, mentality) {
 export function computeOriginPOSForStarters(starters, formationName, pitchSize, strategy) {
   const mentality = strategy?.mentality || 'balanced';
   const positionsMap = getFormationPositions(formationName, pitchSize, mentality);
-
-  // Apply defensive line offset from team strategy (Layer 1 AI)
   const lineOffset = strategy?._defensiveLineOffset || 0;
   const height = pitchSize?.pitchHeight || 1050;
 
-  // Track which slot index we're on for each position type
-  const usage = {};
-
-  return starters.map((starter) => {
-    const pos = starter.position || 'CM';
-    const slots = positionsMap[pos];
-    if (!slots || slots.length === 0) {
-      // Position not in this formation — fall back to CM slot
-      const fallback = positionsMap['CM'];
-      if (fallback && fallback.length > 0) {
-        const idx = usage[pos] || 0;
-        usage[pos] = idx + 1;
-        const [fx, fy] = fallback[idx % fallback.length];
-        // Apply line offset to non-GK positions
-        const adjustedY = pos === 'GK' ? fy : Math.max(50, Math.min(height - 50, fy + lineOffset));
-        return [fx, adjustedY];
-      }
-      return [340, 350]; // absolute fallback — centre circle
+  // Flatten all formation slots into a pool we can consume
+  const slotPool = [];
+  for (const [pos, coords] of Object.entries(positionsMap)) {
+    for (let i = 0; i < coords.length; i++) {
+      slotPool.push({ pos, coord: coords[i], assigned: false });
     }
+  }
 
-    const idx = usage[pos] || 0;
-    usage[pos] = idx + 1;
-    const [sx, sy] = slots[idx % slots.length];
-    // Apply line offset to non-GK positions
-    const adjustedY = pos === 'GK' ? sy : Math.max(50, Math.min(height - 50, sy + lineOffset));
-    return [sx, adjustedY];
-  });
+  const result = new Array(starters.length);
+  const unassigned = [];
+
+  // ---- Pass 1: exact position match -----------------------------------
+  for (let i = 0; i < starters.length; i++) {
+    const pos = starters[i].position || 'CM';
+    const slotIdx = slotPool.findIndex((s) => !s.assigned && s.pos === pos);
+    if (slotIdx !== -1) {
+      slotPool[slotIdx].assigned = true;
+      const [sx, sy] = slotPool[slotIdx].coord;
+      const adjustedY = pos === 'GK' ? sy : Math.max(50, Math.min(height - 50, sy + lineOffset));
+      result[i] = [sx, adjustedY];
+    } else {
+      unassigned.push(i);
+    }
+  }
+
+  // ---- Pass 2: assign by position-group proximity ---------------------
+  for (const idx of unassigned) {
+    const pos = starters[idx].position || 'CM';
+    const group = getPositionGroup(pos);
+    const remaining = slotPool.filter((s) => !s.assigned);
+
+    if (remaining.length > 0) {
+      // Score every remaining slot — pick the best match
+      let best = remaining[0];
+      let bestScore = _slotMatchScore(pos, group, best.pos);
+
+      for (let j = 1; j < remaining.length; j++) {
+        const score = _slotMatchScore(pos, group, remaining[j].pos);
+        if (score > bestScore) {
+          bestScore = score;
+          best = remaining[j];
+        }
+      }
+
+      best.assigned = true;
+      const [sx, sy] = best.coord;
+      const adjustedY = pos === 'GK' ? sy : Math.max(50, Math.min(height - 50, sy + lineOffset));
+      result[idx] = [sx, adjustedY];
+    } else {
+      // Safety net — should never happen with 11v11
+      result[idx] = [340, 350];
+    }
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Slot-match scoring (higher = better fit for the player's position)
+// ---------------------------------------------------------------------------
+
+function _slotMatchScore(playerPos, playerGroup, slotPos) {
+  const slotGroup = getPositionGroup(slotPos);
+
+  // Exact position match (shouldn't reach here — Pass 1 handles it)
+  if (playerPos === slotPos) return 100;
+
+  // Same tactical group
+  if (playerGroup === slotGroup) return 85;
+
+  // Adjacent groups — position-specific proximity
+  // DM is the bridge between defence and midfield
+  if (playerGroup === 'DM' && slotGroup === 'CB') return 75;
+  if (playerGroup === 'CB' && slotGroup === 'DM') return 70;
+  if (playerGroup === 'DM' && slotGroup === 'CM') return 78;
+  if (playerGroup === 'CM' && slotGroup === 'DM') return 75;
+  // Full-back <-> Centre-back
+  if (playerGroup === 'FB' && slotGroup === 'CB') return 72;
+  if (playerGroup === 'CB' && slotGroup === 'FB') return 65;
+  // Wide midfield <-> Central midfield
+  if (playerGroup === 'WM' && slotGroup === 'CM') return 72;
+  if (playerGroup === 'CM' && slotGroup === 'WM') return 68;
+  // Wide midfield <-> Winger
+  if (playerGroup === 'WM' && slotGroup === 'WG') return 70;
+  if (playerGroup === 'WG' && slotGroup === 'WM') return 65;
+  // Winger <-> Striker
+  if (playerGroup === 'WG' && slotGroup === 'ST') return 65;
+  if (playerGroup === 'ST' && slotGroup === 'WG') return 60;
+  // CM (CAM) <-> Striker
+  if (playerGroup === 'CM' && slotGroup === 'ST') return 62;
+  if (playerGroup === 'ST' && slotGroup === 'CM') return 55;
+  // WM <-> Striker
+  if (playerGroup === 'WM' && slotGroup === 'ST') return 55;
+  if (playerGroup === 'ST' && slotGroup === 'WM') return 48;
+  // FB <-> WM
+  if (playerGroup === 'FB' && slotGroup === 'WM') return 60;
+  if (playerGroup === 'WM' && slotGroup === 'FB') return 55;
+
+  // Broad-category fallback
+  const DEF = new Set(['GK', 'CB', 'FB']);
+  const MID = new Set(['DM', 'CM', 'WM']);
+  const ATT = new Set(['WG', 'ST']);
+
+  if (DEF.has(playerGroup) && DEF.has(slotGroup)) return 40;
+  if (MID.has(playerGroup) && MID.has(slotGroup)) return 40;
+  if (ATT.has(playerGroup) && ATT.has(slotGroup)) return 40;
+  if (MID.has(playerGroup) && ATT.has(slotGroup)) return 30;
+  if (ATT.has(playerGroup) && MID.has(slotGroup)) return 28;
+  if (DEF.has(playerGroup) && MID.has(slotGroup)) return 20;
+  if (MID.has(playerGroup) && DEF.has(slotGroup)) return 18;
+
+  return 5;
 }
 
 // ---------------------------------------------------------------------------
@@ -459,13 +550,8 @@ function _slotToPosition(slotKey) {
 /**
  * Mentality → defensive line depth multiplier.
  * Attack pushes the defensive line higher; defend drops it deeper.
+ * Delegates to the unified mentality strategy table (Design Pattern #3).
  */
 function _mentalityToDepthFactor(mentality) {
-  switch (mentality) {
-    case 'ultra_attack':  return 1.15;
-    case 'attack':        return 1.07;
-    case 'defend':        return 0.93;
-    case 'ultra_defend':  return 0.85;
-    default:              return 1.00;  // 'balanced'
-  }
+  return getMentalityStrategy(mentality).depthFactor;
 }

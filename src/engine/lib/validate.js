@@ -1,7 +1,7 @@
 import * as common from './common.js'
 import { ALL_POSITIONS } from './positionGroup.js'
 import { validateFormationName as _validateFormationName } from './formation.js'
-import { validateRoleForPosition } from './tactics.js'
+import { validateRoleForPosition, getDefaultRole } from './tactics.js'
 
 function validateTeam(team) {
   if (typeof (team) != `object`) team = JSON.parse(team)
@@ -195,7 +195,6 @@ function validateFormationName(name) {
  */
 function validateRoleAssignment(position, role) {
   if (validateRoleForPosition(role, position)) return role;
-  const { getDefaultRole } = require('./tactics.js');
   console.warn(`[validate] Role "${role}" invalid for position "${position}" — falling back to default`);
   return getDefaultRole(position);
 }

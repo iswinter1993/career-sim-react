@@ -12,6 +12,7 @@
 // the reducer routes based on the current sub-state.
 
 import SIM from './simEngine';
+import { ITERATIONS_PER_HALF } from './gameConfig';
 
 // ---------------------------------------------------------------------------
 // Phase & sub-state enums
@@ -76,10 +77,14 @@ export function deriveMatchState(state) {
   const ms = state.matchState;
   if (!ms) return null;
   if (ms.finished) return MATCH.FINISHED;
-  if (!ms.ready)   return MATCH.INIT;
-  // paused + tactics not done yet = pre-match tactics screen
+  // Tactics phase: paused + not yet confirmed. This must come BEFORE
+  // the !ms.ready check — during tactics, ready is still false because
+  // the engine hasn't been initialised yet (it only init'ed after the
+  // user confirms tactics).
   if (ms.paused && !ms.tacticsDone) return MATCH.TACTICS;
-  // paused + tactics done = user-requested pause during play
+  // Engine not initialised yet — transitional loading state.
+  if (!ms.ready)   return MATCH.INIT;
+  // Tactics done, but user paused during play.
   if (ms.paused)   return MATCH.PAUSED;
   return MATCH.PLAYING;
 }
@@ -245,7 +250,7 @@ export function applyStartMatch(state) {
       identity: state.identity,
       simState: state.simState,
       pitch: null,
-      maxIters: 3000,
+      maxIters: ITERATIONS_PER_HALF,
       matchDetails: null,
       paused: true,
       autoMode: false,

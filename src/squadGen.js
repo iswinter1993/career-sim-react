@@ -274,29 +274,91 @@ export function generatePlayer(position, qualityMin, qualityMax, overrides) {
  * @param {string} [formation] — formation key (e.g. '4-4-2', '4-3-3'); defaults to '4-4-2'
  * @returns {{ teamName: string, starters: Array, subs: Array, all: Array, formation: string }}
  */
-export function buildTeamSquad(playerIdentity, leagueLevel, seed, formation) {
+export function buildTeamSquad(playerIdentity, leagueLevel, seed, formation, clubName) {
   setSeed(seed);
 
   const quality = LEAGUE_QUALITY[Math.max(1, Math.min(4, leagueLevel))] || LEAGUE_QUALITY[2];
   const fm = formation && FORMATIONS[formation] ? formation : '4-4-2';
   const fmSlots = FORMATIONS[fm];
 
-  // Team name
-  const teamName = _generateTeamName();
+  // Team name — use the player's actual club if available, otherwise generate
+  const teamName = clubName || _generateTeamName();
 
   const playerPos = playerIdentity.pos || 'ST';
   const starters = [];
   const usedIds = new Set();
 
+  // Position fallback map: if the formation has no slot for the player's
+  // exact position, substitute a nearby position (same position group).
+  const POS_FALLBACK = {
+    CAM: ['CM', 'ST'],
+    CDM: ['CM', 'CB'],
+    LW:  ['LM', 'ST'],
+    RW:  ['RM', 'ST'],
+    LWB: ['LB'],
+    RWB: ['RB'],
+  };
+
+  function _resolvePlayerSlot(fmSlots, playerPos) {
+    // 1. Exact match
+    let count = 0;
+    for (const s of fmSlots) {
+      if (s === playerPos) count++;
+    }
+    if (count > 0) return { pos: playerPos, matchType: 'exact' };
+
+    // 2. Try fallback positions (same group, closest role)
+    const fallbacks = POS_FALLBACK[playerPos] || [];
+    for (const fb of fallbacks) {
+      count = 0;
+      for (const s of fmSlots) {
+        if (s === fb) count++;
+      }
+      if (count > 0) return { pos: fb, matchType: 'fallback' };
+    }
+
+    // 3. Last resort: try the same position group
+    const group = playerIdentity._posGroup || getPositionGroup(playerPos);
+    for (const s of fmSlots) {
+      if (getPositionGroup(s) === group) {
+        return { pos: s, matchType: 'group-fallback' };
+      }
+    }
+
+    // 4. Nothing fits — use the first non-GK slot
+    for (const s of fmSlots) {
+      if (s !== 'GK') return { pos: s, matchType: 'any' };
+    }
+
+    // 5. At least GK
+    return { pos: fmSlots[0] || 'ST', matchType: 'forced' };
+  }
+
+  // Determine the actual slot the player occupies
+  const slotResult = _resolvePlayerSlot(fmSlots, playerPos);
+  const effectivePos = slotResult.pos;
+  // Track which formation slot the player occupies
+  let alreadySlotted = null;
+
   for (const pos of fmSlots) {
-    if (pos === playerPos && starters.filter((s) => s.position === playerPos).length === 0) {
-      // Inject the player's player here
-      const playerSkills = mapToEngineSkills(playerIdentity.subAttrs, playerPos);
+    // Check if this formation slot should get the player
+    const shouldPlacePlayer =
+      (pos === effectivePos && starters.filter((s) => s.position === effectivePos).length === 0
+       && !alreadySlotted);
+
+    if (shouldPlacePlayer) {
+      // Inject the player's player here, but mark their true position
+      const playerSkills = mapToEngineSkills(
+        playerIdentity.subAttrs,
+        slotResult.matchType === 'exact' ? playerPos : effectivePos
+      );
       const ovr = _approxOvr(playerIdentity.subAttrs, playerPos);
       const p = {
         id: 'player_self',
         name: playerIdentity.name,
-        position: playerPos,
+        position: playerPos,          // keep true position for display
+        _effectivePos: effectivePos,  // engine slot position
+        _matchType: slotResult.matchType,
         subAttrs: { ...playerIdentity.subAttrs },
         engineSkills: playerSkills,
         ovr,
@@ -304,6 +366,7 @@ export function buildTeamSquad(playerIdentity, leagueLevel, seed, formation) {
       };
       starters.push(p);
       usedIds.add('player_self');
+      alreadySlotted = true;
     } else {
       // Generate a random teammate, bias quality toward player OVR
       const ovr = playerIdentity.subAttrs ? _approxOvr(playerIdentity.subAttrs, playerPos) : quality[0];
@@ -345,6 +408,9 @@ export function buildTeamSquad(playerIdentity, leagueLevel, seed, formation) {
 export function buildOpponentSquad(teamName, leagueLevel, seed, formation) {
   setSeed(seed);
 
+  // Auto-generate a real Chinese team name instead of using the hardcoded fallback.
+  const name = teamName || _generateTeamName();
+
   const quality = LEAGUE_QUALITY[Math.max(1, Math.min(4, leagueLevel))] || LEAGUE_QUALITY[2];
   const fm = formation && FORMATIONS[formation] ? formation : '4-4-2';
   const fmSlots = FORMATIONS[fm];
@@ -367,7 +433,7 @@ export function buildOpponentSquad(teamName, leagueLevel, seed, formation) {
 
   const all = [...starters, ...subs];
 
-  return { teamName, starters, subs, all, formation: fm };
+  return { teamName: name, starters, subs, all, formation: fm };
 }
 
 // ---------------------------------------------------------------------------

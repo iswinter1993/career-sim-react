@@ -5,6 +5,8 @@
 **许可证**: ISC  
 **npm**: `npm install --save footballsimulationengine`
 
+> **注意**: 本文档分析的是上游 npm 包。本项目现已使用其 vendored ESM fork `src/engine/`（API 相同：`initiateGame`/`playIteration`/`startSecondHalf`）作为实际运行引擎。
+
 ---
 
 ## 概述

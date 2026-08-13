@@ -460,9 +460,9 @@ function setBallMovementMatchDetails(matchDetails, thisPlayer, thisPos, thisTeam
 
 function checkForHandball(thisPOS, calcHeight) {
   const ratio = thisPOS[2] / calcHeight
-  if (ratio <= 0.5) return Math.random() < 0.08
-  else if (ratio <= 0.8) return Math.random() < 0.35
-  return Math.random() < 0.18
+  if (ratio <= 0.5) return common.random() < 0.08
+  else if (ratio <= 0.8) return common.random() < 0.35
+  return common.random() < 0.18
 }
 
 function setAttackBodyPart(thisPOS, calcHeight) {
@@ -689,7 +689,6 @@ function ballCrossed(matchDetails, team, player) {
   ]
   const bodyPart = setAttackBodyPart([0, 0, 0], 100)
   matchDetails.ball.lastTouch.bodyPart = bodyPart
-  console.log(finalTarget)
   let temp = calcBallMovementOverTime(matchDetails, power * 1.1, finalTarget, player, 'cross')
   return temp
 }

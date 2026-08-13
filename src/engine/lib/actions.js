@@ -542,7 +542,7 @@ function resolveTackle(player, team, opposition, matchDetails) {
   if (index !== -1) thatPlayer = opposition.players[index]
   else return false
   player.stats.tackles.total++
-  if (wasFoul(10, 18)) {
+  if (wasFoul(10, 18, player.skill.tackling)) {
     setFoul(matchDetails, team, player, thatPlayer)
     return true
   }
@@ -568,7 +568,7 @@ function resolveSlide(player, team, opposition, matchDetails) {
   if (index !== -1) thatPlayer = opposition.players[index]
   else return false
   player.stats.tackles.total++
-  if (wasFoul(11, 20)) {
+  if (wasFoul(11, 20, player.skill.tackling)) {
     setFoul(matchDetails, team, player, thatPlayer)
     return true
   }
@@ -651,14 +651,29 @@ function setFoul(matchDetails, team, player, thatPlayer) {
   else matchDetails.secondTeamStatistics.fouls++
 }
 
-function wasFoul(x, y) {
-  let foul = common.getRandomNumber(0, x)
-  if (common.isBetween(foul, 0, (y / 2) - 1)) return true
-  return false
+function wasFoul(x, y, tackling) {
+  // 犯规 ← 抢断: higher tackling = cleaner challenge = lower foul probability.
+  // A standing tackle passes y=18, a slide tackle y=20 — slides are harder to
+  // time, so they carry a small extra foul risk.
+  const skill = _skillValue(tackling, 50)
+  const base = 0.52 - (skill / 100) * 0.40   // skill 0 → 0.52, 50 → 0.32, 100 → 0.12
+  const slideBias = y > 19 ? 0.08 : 0
+  const chance = Math.max(0.02, Math.min(0.85, base + slideBias))
+  return common.getRandomNumber(0, 100) < chance * 100
 }
 
-function foulIntensity() {
-  return common.getRandomNumber(1, 99)
+function foulIntensity(tackling) {
+  // 红黄牌 ← 抢断: clumsy tacklers commit more reckless challenges, shifting
+  // intensity upward (more cards); clean tacklers shift it down (fewer cards).
+  const skill = _skillValue(tackling, 50)
+  const shift = Math.round((50 - skill) * 0.3)   // -15 (elite) … +15 (clumsy)
+  return Math.max(1, Math.min(99, common.getRandomNumber(1, 99) + shift))
+}
+
+/** Coerce an engine skill value (string|number) to a 0-100 number, with a fallback. */
+function _skillValue(value, fallback) {
+  const n = parseInt(value, 10)
+  return Number.isFinite(n) ? n : fallback
 }
 
 function playerJumps(perception) {

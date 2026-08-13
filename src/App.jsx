@@ -1,5 +1,6 @@
 import React, { useEffect, Component } from 'react';
 import { GameProvider, useGame } from './GameContext';
+import { MATCH } from './stateMachine';
 import IntroView from './components/IntroView';
 import IdentityView from './components/IdentityView';
 import CareerView from './components/CareerView';
@@ -52,14 +53,21 @@ class ErrorBoundary extends Component {
 }
 
 function GameShell() {
-  const { state, PHASES } = useGame();
+  const { state, PHASES, matchPhase } = useGame();
   const { phase } = state;
 
   useEffect(() => {
     document.body.classList.toggle('no-actionbar', phase !== PHASES.IDENTITY);
     document.body.classList.toggle('in-career', phase === PHASES.CAREER);
     document.body.classList.toggle('in-match', phase === PHASES.MATCH);
-  }, [phase, PHASES]);
+    // Only the live broadcast view (playing/paused/finished) goes wide;
+    // pre-match tactics keeps the narrow single-column width.
+    document.body.classList.toggle(
+      'in-match-live',
+      phase === PHASES.MATCH &&
+        (matchPhase === MATCH.PLAYING || matchPhase === MATCH.PAUSED || matchPhase === MATCH.FINISHED)
+    );
+  }, [phase, matchPhase, PHASES]);
 
   return (
     <>

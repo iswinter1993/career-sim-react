@@ -50,6 +50,7 @@ async function playIteration(matchDetails) {
   matchDetails = ballMovement.moveBall(matchDetails)
   if (matchDetails.endIteration == true) {
     delete matchDetails.endIteration
+    playerMovement.reapplySentOff(matchDetails)
     return matchDetails
   }
   playerMovement.closestPlayerToBall(closestPlayerA, kickOffTeam, matchDetails)
@@ -62,6 +63,10 @@ async function playIteration(matchDetails) {
   let stAllOtherMoves = actions.extractBallActions(stMoves, 'movement')
   matchDetails.kickOffTeam = playerMovement.movePlayers(koTeamAllOtherMoves, kickOffTeam, secondTeam, matchDetails)
   matchDetails.secondTeam = playerMovement.movePlayers(stAllOtherMoves, secondTeam, kickOffTeam, matchDetails)
+
+  // 盯防: assign isMarked before ball actions so the pass/through-ball AI
+  // (ballMovement.passScoreOption / tballScoreOption) prefers unmarked receivers.
+  playerMovement.assignMarking(matchDetails)
 
   let allBallMoves = [...koTeamMovesBallMoves, ...stMovesBallMoves]
   let validBallMoves = allBallMoves.filter(m => m.player.hasBall === true)
@@ -86,7 +91,7 @@ async function playIteration(matchDetails) {
     playerMovement.checkOffside(kickOffTeam, secondTeam, matchDetails)
   }
   matchDetails.iterationLog.push(`Ball end position: ${matchDetails.ball.position}`)
-    console.log(JSON.stringify(matchDetails))
+  playerMovement.reapplySentOff(matchDetails)
   return matchDetails
 }
 
@@ -105,6 +110,7 @@ async function startSecondHalf(matchDetails) {
   matchDetails.kickOffTeam.intent = `defend`
   matchDetails.secondTeam.intent = `attack`
   matchDetails.half++
+  playerMovement.reapplySentOff(matchDetails)
   return matchDetails
 }
 

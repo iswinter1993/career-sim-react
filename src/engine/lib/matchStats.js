@@ -6,6 +6,7 @@
 //
 // Public API:
 //   createMatchStatsTracker()            → { home, away, matchEvents, teamStats }
+//   createEmptyPlayerStats()              → fresh per-player stats (with live getters)
 //   recordMatchEvent(tracker, side, playerID, eventType, detail, iteration) → void
 //   calculateDerivedStats(playerStats)   → enriched stats with % rates
 //   calculateTeamDerivedStats(teamTracker) → team-level aggregates
@@ -37,8 +38,7 @@ function createTeamStatsTracker() {
   };
 }
 
-function createEmptyPlayerStats() {
-  return {
+export function createEmptyPlayerStats() {  return {
     // Shooting
     shots: 0,
     shotsOnTarget: 0,
@@ -353,6 +353,10 @@ export function calculateDerivedStats(playerStats) {
     crossAccuracy: playerStats.crossesAttempted > 0
       ? Math.round(playerStats.crossesCompleted / playerStats.crossesAttempted * 100)
       : 0,
+    // Rating-weight aliases — playerRating.js weights reference `tackles` and
+    // `crosses` (completed), but the tracker stores tacklesWon/crossesCompleted.
+    tackles: playerStats.tacklesWon || 0,
+    crosses: playerStats.crossesCompleted || 0,
   };
 }
 

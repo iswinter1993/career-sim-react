@@ -1,8 +1,61 @@
 //---------------
-//Maths Functions
+//Randomness — injectable + seedable (Design Pattern #4)
 //---------------
+//
+// The engine funnels ALL randomness through `getRandomNumber` / `random`.
+// By default they use Math.random (non-deterministic). For deterministic
+// replay / tests / save-scum-proof match results, inject a seeded PRNG via
+// `seedRandom(seed)` or a custom source via `setRandomSource(fn)`.
+//
+// The engine is internally synchronous (async API, no awaits), so a seeded
+// source yields a fully reproducible match given the same seed + inputs.
+
+// mulberry32 — small, fast, good-quality 32-bit PRNG. Returns float in [0, 1).
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0;
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+let _randomSource = Math.random;
+
+/** Float in [0, 1). Respects the injected random source. */
+export function random() {
+  return _randomSource();
+}
+
+/** Integer in [min, max] inclusive. The engine's single random choke point. */
 export function getRandomNumber(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min
+  return Math.floor(_randomSource() * (max - min + 1)) + min
+}
+
+/** Inject a custom random source. Must return a float in [0, 1). */
+export function setRandomSource(fn) {
+  if (typeof fn !== 'function') throw new TypeError('setRandomSource expects a function')
+  _randomSource = fn
+  return _randomSource
+}
+
+/** Seed the RNG with a deterministic PRNG (mulberry32). Returns the source fn. */
+export function seedRandom(seed) {
+  const prng = mulberry32(seed >>> 0);
+  _randomSource = prng;
+  return prng;
+}
+
+/** Return the current random source (for snapshot/restore by EngineSession). */
+export function getRandomSource() {
+  return _randomSource;
+}
+
+/** Restore the default non-deterministic Math.random source. */
+export function resetRandomSource() {
+  _randomSource = Math.random;
 }
 
 export function round(value, decimals) {

@@ -1,49 +1,48 @@
-// PitchCanvas — 2D top-down football pitch renderer (T06)
+// PitchCanvas — 2D top-down football pitch renderer (T06 enhanced)
 //
-// Draws the full pitch with 22 players + ball on a <canvas> element.
-// Rendering is decoupled from the engine iteration loop:
-//   1. Engine updates → matchDetails snapshot pushed to a ref
-//   2. requestAnimationFrame reads the latest snapshot → tweens toward it
-//
-// Tween interpolation (~400ms) gives smooth 60fps movement between
-// discrete engine steps, avoiding jerky teleportation.
+// Enhanced with:
+//   - Formation lines connecting players to show formation shape
+//   - Player role/position badges
+//   - Ball trail effect
+//   - Possession-based highlight
+//   - Formation name overlay
+//   - Team color differentiation with kit markings
 
 import React, { useRef, useEffect, useCallback } from 'react';
 import { useGame } from '../GameContext';
+import * as MatchEngine from '../matchEngine';
+import { PITCH } from '../gameConfig';
 
 // ---------------------------------------------------------------------------
-// Pitch geometry (mirrors engine's defaults)
+// Pitch geometry (canonical values live in gameConfig.PITCH — Design Pattern #9)
 // ---------------------------------------------------------------------------
-const PITCH_WIDTH = 680;
-const PITCH_HEIGHT = 1050;
-const GOAL_WIDTH = 90;
-
-// Margins inside the canvas (px)
+const PITCH_WIDTH = PITCH.pitchWidth;
+const PITCH_HEIGHT = PITCH.pitchHeight;
+const GOAL_WIDTH = PITCH.goalWidth;
 const MARGIN = 20;
-
-// Player rendering
 const PLAYER_RADIUS = 10;
 const BALL_RADIUS = 5;
 
-// Tween duration in ms
-const TWEEN_MS = 350;
-
-// Team colors
-const HOME_COLOR = '#3498db';
-const AWAY_COLOR = '#e74c3c';
+// Team colors — using kit-style differentiation
+const HOME_COLOR = '#2d7dd2';      // blue kit
+const HOME_COLOR_LIGHT = '#5ba0e8';
+const AWAY_COLOR = '#e63946';      // red kit
+const AWAY_COLOR_LIGHT = '#f06070';
 const PLAYER_HIGHLIGHT = '#f1c40f';
+const GK_COLOR = '#27ae60';         // keeper in green
+
+// Ball trail
+const TRAIL_MAX = 12;
+const TRAIL_STORAGE = { positions: [], lastBallPos: null };
 
 // ---------------------------------------------------------------------------
-// Coordinate mapping (engine pitch coords → canvas pixel coords)
+// Coordinate mapping
 // ---------------------------------------------------------------------------
-function getCanvasDims(containerWidth) {
-  // Maintain pitch aspect ratio
+function getCanvasDims(containerWidth, containerHeight) {
   const maxW = containerWidth - MARGIN * 2;
-  const maxH = 520; // fixed max height for the pitch area
-
+  const maxH = containerHeight ? containerHeight - MARGIN * 2 : 680;
   const aspect = PITCH_WIDTH / PITCH_HEIGHT;
   let w, h;
-
   if (maxW / aspect <= maxH) {
     w = maxW;
     h = w / aspect;
@@ -51,32 +50,21 @@ function getCanvasDims(containerWidth) {
     h = maxH;
     w = h * aspect;
   }
-
   return {
-    width: w + MARGIN * 2,
-    height: h + MARGIN * 2,
-    pitchLeft: MARGIN,
-    pitchTop: MARGIN,
-    pitchW: w,
-    pitchH: h,
-    scaleX: w / PITCH_WIDTH,
-    scaleY: h / PITCH_HEIGHT,
+    width: w + MARGIN * 2, height: h + MARGIN * 2,
+    pitchLeft: MARGIN, pitchTop: MARGIN,
+    pitchW: w, pitchH: h,
+    scaleX: w / PITCH_WIDTH, scaleY: h / PITCH_HEIGHT,
   };
 }
 
-function toScreenX(engineX, dims) {
-  return dims.pitchLeft + engineX * dims.scaleX;
-}
-
-function toScreenY(engineY, dims) {
-  // Engine Y: 0 = top goal, pitchHeight = bottom goal
-  return dims.pitchTop + engineY * dims.scaleY;
-}
+function toScreenX(engineX, dims) { return dims.pitchLeft + engineX * dims.scaleX; }
+function toScreenY(engineY, dims) { return dims.pitchTop + engineY * dims.scaleY; }
+function lerp(a, b, t) { return a + (b - a) * t; }
 
 // ---------------------------------------------------------------------------
-// Drawing helpers
+// Drawing: Pitch
 // ---------------------------------------------------------------------------
-
 function drawPitch(ctx, dims) {
   const { pitchLeft, pitchTop, pitchW, pitchH } = dims;
   const right = pitchLeft + pitchW;
@@ -84,191 +72,279 @@ function drawPitch(ctx, dims) {
   const cx = pitchLeft + pitchW / 2;
   const cy = pitchTop + pitchH / 2;
 
-  // Grass
-  ctx.fillStyle = '#0d4a0d';
+  // Grass base
+  ctx.fillStyle = '#0c3e0c';
   ctx.fillRect(pitchLeft, pitchTop, pitchW, pitchH);
 
-  // Subtle grass stripes
-  ctx.fillStyle = '#0e4e0e';
-  const stripeW = pitchW / 10;
-  for (let i = 0; i < 10; i += 2) {
+  // Grass stripes — alternating subtle color
+  const stripeW = pitchW / 14;
+  for (let i = 0; i < 14; i += 2) {
+    ctx.fillStyle = '#0d4410';
     ctx.fillRect(pitchLeft + i * stripeW, pitchTop, stripeW, pitchH);
   }
 
-  // Outer boundary
+  // Pitch boundary
   ctx.strokeStyle = 'rgba(255,255,255,0.55)';
   ctx.lineWidth = 2;
   ctx.strokeRect(pitchLeft, pitchTop, pitchW, pitchH);
 
-  // Centre line
+  // Center line
   ctx.beginPath();
-  ctx.moveTo(pitchLeft, cy);
-  ctx.lineTo(right, cy);
-  ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-  ctx.lineWidth = 1.5;
+  ctx.moveTo(pitchLeft, cy); ctx.lineTo(right, cy);
+  ctx.strokeStyle = 'rgba(255,255,255,0.42)'; ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // Centre circle
+  // Center circle
   const centreRadius = (90 / PITCH_WIDTH) * pitchW;
   ctx.beginPath();
   ctx.arc(cx, cy, centreRadius, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = 'rgba(255,255,255,0.42)'; ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // Centre dot
+  // Center dot
   ctx.beginPath();
   ctx.arc(cx, cy, 3, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(255,255,255,0.6)';
-  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fill();
 
-  // Goals (top and bottom)
-  const goalHalfW = (GOAL_WIDTH / PITCH_WIDTH) * pitchW / 2;
-  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-  ctx.lineWidth = 3;
-
-  // Top goal
-  ctx.strokeRect(cx - goalHalfW, pitchTop - 3, goalHalfW * 2, 6);
-  // Bottom goal
-  ctx.strokeRect(cx - goalHalfW, bottom - 3, goalHalfW * 2, 6);
+  // Goals
+  const goalHW = (GOAL_WIDTH / PITCH_WIDTH) * pitchW / 2;
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 3;
+  ctx.strokeRect(cx - goalHW, pitchTop - 3, goalHW * 2, 6);
+  ctx.strokeRect(cx - goalHW, bottom - 3, goalHW * 2, 6);
 
   // Penalty areas
   const penW = (300 / PITCH_WIDTH) * pitchW;
   const penH = (200 / PITCH_HEIGHT) * pitchH;
-  ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(255,255,255,0.42)'; ctx.lineWidth = 1;
+  const penL = cx - penW / 2;
+  ctx.strokeRect(penL, pitchTop, penW, penH);
+  ctx.strokeRect(penL, bottom - penH, penW, penH);
 
-  // Top penalty area
-  const penLeft = cx - penW / 2;
-  ctx.strokeRect(penLeft, pitchTop, penW, penH);
-  // Bottom penalty area
-  ctx.strokeRect(penLeft, bottom - penH, penW, penH);
-
-  // Goal areas (6-yard box)
+  // 6-yard boxes
   const gaW = (150 / PITCH_WIDTH) * pitchW;
   const gaH = (70 / PITCH_HEIGHT) * pitchH;
-  const gaLeft = cx - gaW / 2;
-  ctx.strokeRect(gaLeft, pitchTop, gaW, gaH);
-  ctx.strokeRect(gaLeft, bottom - gaH, gaW, gaH);
+  const gaL = cx - gaW / 2;
+  ctx.strokeRect(gaL, pitchTop, gaW, gaH);
+  ctx.strokeRect(gaL, bottom - gaH, gaW, gaH);
 
   // Penalty spots
-  const penSpotY = (100 / PITCH_HEIGHT) * pitchH;
-  ctx.beginPath();
-  ctx.arc(cx, pitchTop + penSpotY, 3, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(cx, bottom - penSpotY, 3, 0, Math.PI * 2);
+  const penSY = (100 / PITCH_HEIGHT) * pitchH;
+  ctx.beginPath(); ctx.arc(cx, pitchTop + penSY, 3, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(cx, bottom - penSY, 3, 0, Math.PI * 2);
   ctx.fill();
 
   // Corner arcs
-  const cornerR = 10;
+  const cr = 10;
   const corners = [
-    [pitchLeft, pitchTop, 0],
-    [right, pitchTop, Math.PI / 2],
-    [right, bottom, Math.PI],
-    [pitchLeft, bottom, -Math.PI / 2],
+    [pitchLeft, pitchTop, 0], [right, pitchTop, Math.PI / 2],
+    [right, bottom, Math.PI], [pitchLeft, bottom, -Math.PI / 2],
   ];
-  for (const [cx2, cy2, startAngle] of corners) {
-    ctx.beginPath();
-    ctx.arc(cx2, cy2, cornerR, startAngle, startAngle + Math.PI / 2);
-    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-    ctx.lineWidth = 1;
+  for (const [cx2, cy2, sa] of corners) {
+    ctx.beginPath(); ctx.arc(cx2, cy2, cr, sa, sa + Math.PI / 2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.42)'; ctx.lineWidth = 1;
     ctx.stroke();
   }
 }
 
-function drawPlayer(ctx, player, x, y, isHomeTeam, isPlayer, hasBall, dims) {
-  const r = PLAYER_RADIUS;
-  const color = isHomeTeam ? HOME_COLOR : AWAY_COLOR;
+// ---------------------------------------------------------------------------
+// Drawing: Formation lines (dashed connections between players)
+// ---------------------------------------------------------------------------
+function drawFormationLines(ctx, players, color, dims) {
+  if (!players || players.length < 3) return;
 
-  // Body circle
+  // Group players by rough Y zone (defense, midfield, attack)
+  const sorted = [...players].sort((a, b) => a.y - b.y);
+  const zones = [[], [], []]; // def, mid, att
+
+  for (const p of sorted) {
+    const ratio = p.y / PITCH_HEIGHT;
+    if (ratio < 0.28) zones[0].push(p);      // defense
+    else if (ratio < 0.58) zones[1].push(p);  // midfield
+    else zones[2].push(p);                     // attack
+  }
+
+  // Draw horizontal connection lines within each zone
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 0.8;
+  ctx.setLineDash([4, 8]);
+  ctx.globalAlpha = 0.3;
+
+  for (const zone of zones) {
+    if (zone.length < 2) continue;
+    const sortedByX = [...zone].sort((a, b) => a.x - b.x);
+    for (let i = 0; i < sortedByX.length - 1; i++) {
+      const x1 = toScreenX(sortedByX[i].x, dims);
+      const y1 = toScreenY(sortedByX[i].y, dims);
+      const x2 = toScreenX(sortedByX[i + 1].x, dims);
+      const y2 = toScreenY(sortedByX[i + 1].y, dims);
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+  }
+
+  // Vertical connection: GK → defense → midfield → attack
+  if (zones[0].length > 0 && zones[1].length > 0) {
+    const defCenter = zones[0][Math.floor(zones[0].length / 2)];
+    const midCenter = zones[1][Math.floor(zones[1].length / 2)];
+    const dx1 = toScreenX(defCenter.x, dims), dy1 = toScreenY(defCenter.y, dims);
+    const dx2 = toScreenX(midCenter.x, dims), dy2 = toScreenY(midCenter.y, dims);
+    ctx.beginPath(); ctx.moveTo(dx1, dy1); ctx.lineTo(dx2, dy2); ctx.stroke();
+  }
+  if (zones[1].length > 0 && zones[2].length > 0) {
+    const midCenter = zones[1][Math.floor(zones[1].length / 2)];
+    const attCenter = zones[2][Math.floor(zones[2].length / 2)];
+    const dx2 = toScreenX(midCenter.x, dims), dy2 = toScreenY(midCenter.y, dims);
+    const dx3 = toScreenX(attCenter.x, dims), dy3 = toScreenY(attCenter.y, dims);
+    ctx.beginPath(); ctx.moveTo(dx2, dy2); ctx.lineTo(dx3, dy3); ctx.stroke();
+  }
+
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1.0;
+}
+
+// ---------------------------------------------------------------------------
+// Drawing: Ball trail
+// ---------------------------------------------------------------------------
+function updateBallTrail(ballPos) {
+  if (!ballPos || ballPos.length < 2) return;
+  const [x, y] = ballPos;
+  if (TRAIL_STORAGE.lastBallPos
+      && x === TRAIL_STORAGE.lastBallPos[0]
+      && y === TRAIL_STORAGE.lastBallPos[1]) return;
+
+  TRAIL_STORAGE.positions.push([x, y]);
+  if (TRAIL_STORAGE.positions.length > TRAIL_MAX) {
+    TRAIL_STORAGE.positions.shift();
+  }
+  TRAIL_STORAGE.lastBallPos = [x, y];
+}
+
+function drawBallTrail(ctx, dims) {
+  const positions = TRAIL_STORAGE.positions;
+  if (positions.length < 2) return;
+
+  for (let i = 1; i < positions.length; i++) {
+    const alpha = (i / positions.length) * 0.6;
+    const x1 = toScreenX(positions[i - 1][0], dims);
+    const y1 = toScreenY(positions[i - 1][1], dims);
+    const x2 = toScreenX(positions[i][0], dims);
+    const y2 = toScreenY(positions[i][1], dims);
+
+    ctx.beginPath();
+    ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+    ctx.strokeStyle = `rgba(255,255,255,${alpha.toFixed(2)})`;
+    ctx.lineWidth = Math.max(0.5, 2 * (i / positions.length));
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Drawing: Players
+// ---------------------------------------------------------------------------
+function getPlayerColor(isHomeTeam, isGK, isPlayer) {
+  if (isPlayer) return PLAYER_HIGHLIGHT;
+  if (isGK) return GK_COLOR;
+  return isHomeTeam ? HOME_COLOR : AWAY_COLOR;
+}
+
+function drawPlayer(ctx, player, x, y, isHomeTeam, isPlayer, hasBall, isGK, dims) {
+  const r = PLAYER_RADIUS;
+  const color = getPlayerColor(isHomeTeam, isGK, isPlayer);
+
+  // Body circle with gradient
+  if (isPlayer) {
+    // Player self: glow effect
+    ctx.shadowColor = PLAYER_HIGHLIGHT;
+    ctx.shadowBlur = 10;
+  }
+
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fillStyle = color;
   ctx.fill();
+  ctx.shadowBlur = 0;
 
-  // Player highlight (golden ring)
-  if (isPlayer) {
-    ctx.beginPath();
-    ctx.arc(x, y, r + 2.5, 0, Math.PI * 2);
-    ctx.strokeStyle = PLAYER_HIGHLIGHT;
-    ctx.lineWidth = 2;
-    ctx.shadowColor = PLAYER_HIGHLIGHT;
-    ctx.shadowBlur = 6;
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-  }
-
-  // Border
+  // Player border
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = isPlayer ? '#fff' : 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = isPlayer ? 2 : 1;
   ctx.stroke();
 
-  // Name above player
-  const shortName = (player.name || '').slice(0, 3);
-  if (shortName) {
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.font = '9px ui-sans-serif, system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(shortName, x, y - r - 5);
-  }
-
-  // Ball indicator
+  // Ball indicator — small circle above player
   if (hasBall) {
     ctx.beginPath();
-    ctx.arc(x, y - r - 2, 3, 0, Math.PI * 2);
+    ctx.arc(x, y - r - 3, 4, 0, Math.PI * 2);
     ctx.fillStyle = '#fff';
     ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
   }
+
+  // Position badge — tiny colored square
+  if (player.pos) {
+    const badgeY = y + r + 2;
+    const badgeW = 8, badgeH = 3;
+    ctx.fillStyle = isGK ? GK_COLOR : (isHomeTeam ? HOME_COLOR_LIGHT : AWAY_COLOR_LIGHT);
+    ctx.fillRect(x - badgeW / 2, badgeY, badgeW, badgeH);
+  }
+
+  // Short name label
+  const displayName = player.name ? (player.name.length > 4 ? player.name.slice(0, 4) : player.name) : '?';
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.font = '9px ui-sans-serif, system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(displayName, x, y - r - 8);
 }
 
+// ---------------------------------------------------------------------------
+// Drawing: Ball
+// ---------------------------------------------------------------------------
 function drawBall(ctx, pos, dims) {
   const x = toScreenX(pos[0], dims);
   const y = toScreenY(pos[1], dims);
-
-  ctx.beginPath();
-  ctx.arc(x, y, BALL_RADIUS, 0, Math.PI * 2);
-  ctx.fillStyle = '#fff';
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(x, y, BALL_RADIUS, 0, Math.PI * 2);
+  ctx.fillStyle = '#fff'; ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 1;
   ctx.stroke();
 }
 
 // ---------------------------------------------------------------------------
-// Snapshot & Tween state (outside React to survive re-renders)
+// Formation overlay text
 // ---------------------------------------------------------------------------
-
-/**
- * Linear interpolation between two points.
- */
-function lerp(a, b, t) {
-  return a + (b - a) * t;
+function drawFormationOverlay(ctx, formation, isHome, dims) {
+  if (!formation) return;
+  ctx.font = '10px ui-monospace, monospace';
+  ctx.textAlign = isHome ? 'left' : 'right';
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  const x = isHome ? dims.pitchLeft + 5 : dims.pitchLeft + dims.pitchW - 5;
+  const y = dims.pitchTop + dims.pitchH / 2;
+  ctx.fillText(formation, x, y);
 }
 
-/**
- * Player snapshot: position on the pitch in engine coordinates.
- */
+// ---------------------------------------------------------------------------
+// Snapshot building
+// ---------------------------------------------------------------------------
 function snapPlayer(p, isHomeTeam) {
-  // currentPOS assigned by engine; originPOS as fallback
   const pos = p.currentPOS || p.originPOS || [PITCH_WIDTH / 2, PITCH_HEIGHT / 2];
   return {
     id: p.playerID || p.name,
     name: p.name,
-    x: pos[0],
-    y: pos[1],
+    x: pos[0], y: pos[1],
+    pos: p.position,
     isHomeTeam,
+    isGK: p.position === 'GK',
     hasBall: !!p.hasBall,
+    role: p.role || null,
+    isPlayerSelf: !!(p.isPlayerSelf || p.playerID === 'player_self'),
   };
 }
 
 // ---------------------------------------------------------------------------
 // React Component
 // ---------------------------------------------------------------------------
-
 export default function PitchCanvas() {
   const { state } = useGame();
   const { matchState } = state;
@@ -277,41 +353,41 @@ export default function PitchCanvas() {
   const containerRef = useRef(null);
   const animFrameId = useRef(null);
   const dimsRef = useRef(null);
+  const prevSnapshot = useRef(null);
 
   const isPaused = matchState?.paused;
   const isAutoMode = matchState?.autoMode;
   const isFinished = matchState?.finished;
   const matchDetails = matchState?.matchDetails;
 
-  // Build current snapshot from engine state
+  // Build current snapshot
   const buildSnapshot = useCallback(() => {
     if (!matchDetails) return null;
 
-    const kickOff = matchDetails.kickOffTeam;
-    const second = matchDetails.secondTeam;
+    const kickIsHome = matchDetails.kickOffTeam?.name === matchDetails._homeTeamName;
+    const homeTeam = kickIsHome ? matchDetails.kickOffTeam : matchDetails.secondTeam;
+    const awayTeam = kickIsHome ? matchDetails.secondTeam : matchDetails.kickOffTeam;
 
-    const homePlayers = (kickOff?.players || []).map((p) => snapPlayer(p, true));
-    const awayPlayers = (second?.players || []).map((p) => snapPlayer(p, false));
+    const homePlayers = (homeTeam?.players || []).map((p) => snapPlayer(p, true));
+    const awayPlayers = (awayTeam?.players || []).map((p) => snapPlayer(p, false));
 
     const ballPos = matchDetails.ball?.position || [PITCH_WIDTH / 2, PITCH_HEIGHT / 2];
+    const withPlayer = matchDetails.ball?.withPlayer || false;
 
     return {
       homePlayers,
       awayPlayers,
       ballPos,
-      ballWithPlayer: matchDetails.ball?.withPlayer || false,
+      ballWithPlayer: withPlayer,
+      homeFormation: matchDetails._homeFormation,
+      awayFormation: matchDetails._awayFormation,
     };
   }, [matchDetails]);
 
-  // Animation loop — persistent rAF that reads the latest engine positions
-  // every frame. No tween interpolation — the engine updates at 40-220ms
-  // intervals with 20-40 iterations per tick, so positions change frequently
-  // enough for smooth-enough motion without interpolation fighting the
-  // React render cycle.
+  // Animation loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -322,7 +398,17 @@ export default function PitchCanvas() {
 
       const snapshot = buildSnapshot();
       if (snapshot && !isAutoMode && !isFinished) {
-        clearAndDraw(ctx, canvas, null, dimsRef.current, snapshot, null);
+        // Update ball trail
+        if (!snapshot.ballWithPlayer) {
+          updateBallTrail(snapshot.ballPos);
+        } else {
+          // Clear trail when ball is with a player
+          TRAIL_STORAGE.positions = [];
+          TRAIL_STORAGE.lastBallPos = null;
+        }
+
+        clearAndDraw(ctx, canvas, dimsRef.current, snapshot);
+        prevSnapshot.current = snapshot;
       }
 
       animFrameId.current = requestAnimationFrame(loop);
@@ -339,28 +425,22 @@ export default function PitchCanvas() {
     };
   }, [buildSnapshot, isAutoMode, isFinished]);
 
-  // Resize handler
+  // Resize handler — use the container's actual height so the canvas scales to fit
   useEffect(() => {
     const handleResize = () => {
       const container = containerRef.current;
       const canvas = canvasRef.current;
       if (!container || !canvas) return;
-
       const rect = container.getBoundingClientRect();
-      const dims = getCanvasDims(rect.width);
+      const dims = getCanvasDims(rect.width, rect.height);
       dimsRef.current = dims;
-
       canvas.width = dims.width * (window.devicePixelRatio || 1);
       canvas.height = dims.height * (window.devicePixelRatio || 1);
       canvas.style.width = dims.width + 'px';
       canvas.style.height = dims.height + 'px';
-
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.setTransform(window.devicePixelRatio || 1, 0, 0, window.devicePixelRatio || 1, 0, 0);
-      }
+      const ctx2 = canvas.getContext('2d');
+      if (ctx2) ctx2.setTransform(window.devicePixelRatio || 1, 0, 0, window.devicePixelRatio || 1, 0, 0);
     };
-
     handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -378,68 +458,45 @@ export default function PitchCanvas() {
 }
 
 // ---------------------------------------------------------------------------
-// Internal helpers
+// Master draw function
 // ---------------------------------------------------------------------------
+function clearAndDraw(ctx, canvas, dims, snapshot) {
+  if (!snapshot) return;
 
-function clearAndDraw(ctx, canvas, prev, dims, current, tweenT) {
-  if (!current) return;
-
-  // Use dims from ref or compute fresh
   let d = dims;
-  if (!d) {
-    d = getCanvasDims(canvas.clientWidth || 500);
-  }
+  if (!d) d = getCanvasDims(canvas.clientWidth || 500, canvas.clientHeight || 600);
 
   ctx.clearRect(0, 0, d.width, d.height);
 
-  // Draw pitch
+  // 1. Pitch
   drawPitch(ctx, d);
 
-  const progress = (tweenT != null && prev) ? tweenT : 1;
+  // 2. Formation lines (behind players)
+  drawFormationLines(ctx, snapshot.homePlayers, 'rgba(45,125,210,0.25)', d);
+  drawFormationLines(ctx, snapshot.awayPlayers, 'rgba(230,57,70,0.20)', d);
 
-  const allPrev = prev ? [...(prev.homePlayers || []), ...(prev.awayPlayers || [])] : null;
-  const allCurr = [...(current.homePlayers || []), ...(current.awayPlayers || [])];
+  // 3. Ball trail
+  drawBallTrail(ctx, d);
 
-  // Draw each player — if we have a previous frame, interpolate; otherwise draw at target
-  for (const cp of allCurr) {
-    if (!cp || cp.id == null) continue;
-    const pp = allPrev ? allPrev.find((p) => p.id === cp.id) : null;
-    const x = toScreenX(pp ? lerp(pp.x, cp.x, progress) : cp.x, d);
-    const y = toScreenY(pp ? lerp(pp.y, cp.y, progress) : cp.y, d);
-    const isHome = cp.isHomeTeam;
-    const isPlayer = cp.id === 'player_self';
-
-    drawPlayer(ctx, { name: cp.name || '?' }, x, y, isHome, isPlayer, cp.hasBall, d);
+  // 4. Away players first (behind), then home players (on top)
+  for (const ap of (snapshot.awayPlayers || [])) {
+    if (!ap || ap.id == null) continue;
+    const x = toScreenX(ap.x, d), y = toScreenY(ap.y, d);
+    drawPlayer(ctx, ap, x, y, false, ap.isPlayerSelf, ap.hasBall, ap.isGK, d);
   }
 
-  // Draw ball (on pitch or with a player)
-  const bpx = prev ? lerp(prev.ballPos[0], current.ballPos[0], progress) : current.ballPos[0];
-  const bpy = prev ? lerp(prev.ballPos[1], current.ballPos[1], progress) : current.ballPos[1];
-
-  if (!current.ballWithPlayer) {
-    drawBall(ctx, [bpx, bpy], d);
-  }
-}
-
-function _hasSnapshotChanged(prev, curr) {
-  if (!prev || !curr) return true;
-
-  // Check ball position
-  if (Math.abs(prev.ballPos[0] - curr.ballPos[0]) > 0.5 ||
-      Math.abs(prev.ballPos[1] - curr.ballPos[1]) > 0.5) {
-    return true;
+  for (const hp of (snapshot.homePlayers || [])) {
+    if (!hp || hp.id == null) continue;
+    const x = toScreenX(hp.x, d), y = toScreenY(hp.y, d);
+    drawPlayer(ctx, hp, x, y, true, hp.isPlayerSelf, hp.hasBall, hp.isGK, d);
   }
 
-  // Check if any player moved
-  const prevById = {};
-  for (const p of [...prev.homePlayers, ...prev.awayPlayers]) {
-    prevById[p.id] = p;
-  }
-  for (const p of [...curr.homePlayers, ...curr.awayPlayers]) {
-    const pp = prevById[p.id];
-    if (!pp) return true;
-    if (Math.abs(pp.x - p.x) > 0.5 || Math.abs(pp.y - p.y) > 0.5) return true;
+  // 5. Ball (on pitch, not held)
+  if (!snapshot.ballWithPlayer) {
+    drawBall(ctx, snapshot.ballPos, d);
   }
 
-  return false;
+  // 6. Formation overlay
+  if (snapshot.homeFormation) drawFormationOverlay(ctx, snapshot.homeFormation, true, d);
+  if (snapshot.awayFormation) drawFormationOverlay(ctx, snapshot.awayFormation, false, d);
 }

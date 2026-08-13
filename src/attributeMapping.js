@@ -1,5 +1,5 @@
 // Bidirectional mapping between the player's 15 sub-attributes (0-100)
-// and footballsimulationengine's 10 skills (0-100).
+// and the engine fork's 10 skills (0-100).
 //
 // This module is a pure function layer — no side effects, no mutable state.
 //
@@ -209,6 +209,18 @@ export function mapToEngineSkills(attrs, position) {
 
   // Fitness is derived from stamina sub-attribute (direct 1:1)
   skills.fitness = Math.round(Math.max(1, Math.min(100, attrs.stamina || 50)));
+
+  // Crossing — a distinct skill so wide players' crosses use their own stat
+  // (ballMovement.ballCrossed reads skill.crossing, falling back to passing).
+  // Blends passing + ball control + vision, boosted for wide players who
+  // specialise in it. LWB/RWB (formation positions) count as wide too.
+  const widePositions = ['LB', 'RB', 'LWB', 'RWB', 'LM', 'RM', 'LW', 'RW'];
+  const isWide = widePositions.includes(position);
+  const crossingRaw =
+    ((attrs.passing || 0) * 0.55 + (attrs.ballControl || 0) * 0.25 + (attrs.vision || 0) * 0.20)
+    * (isWide ? 1.05 : 0.85)
+    + (isWide ? 5 : 0);
+  skills.crossing = Math.round(Math.max(0, Math.min(100, crossingRaw)));
 
   return skills;
 }

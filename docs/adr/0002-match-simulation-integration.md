@@ -83,3 +83,9 @@
 
 - `footballsimulationengine` 是纯 Node.js/CommonJS 模块，在浏览器中使用需要 Vite 正确处理 CJS→ESM 转换。`engine.js` 第 89 行有 `console.log` 污染需移除。
 - 大量比赛迭代可能导致主线程阻塞，需要考虑 Web Worker 或分帧执行。
+
+---
+
+## 现状更新 (2026-08-13)
+
+引擎已从 npm 包切换为项目内 ESM fork `src/engine/`（`footballsimulationengine` v5.0.0 的 vendored 改造版）。`src/matchEngine.js` 直接 `import * as Engine from './engine/engine.js'`，不再经 Vite 别名、也不再依赖 npm 包（已 `npm uninstall`）。上述「CJS→ESM 转换」风险已消除；`console.log` 污染已在 fork 内移除。

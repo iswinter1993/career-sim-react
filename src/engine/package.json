@@ -1,7 +1,8 @@
 {
-  "name": "footballsimulationengine",
+  "name": "footballsimulationengine-fork",
   "version": "5.0.0",
-  "description": "an engine for simulating football matches",
+  "description": "Vendored ESM fork of footballsimulationengine, the live engine for career-sim-react (not the npm package)",
+  "type": "module",
   "main": "engine.js",
   "scripts": {
     "start": "node engine.js",

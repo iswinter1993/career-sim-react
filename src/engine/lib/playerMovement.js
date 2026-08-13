@@ -218,26 +218,20 @@ function completeSlide(matchDetails, thisPlayer, team, opp) {
     if (opp.name == matchDetails.kickOffTeam.name) return setPositions.setSetpieceKickOffTeam(matchDetails)
     return setPositions.setSetpieceSecondTeam(matchDetails)
   }
-  let intensity = actions.foulIntensity()
+  let intensity = actions.foulIntensity(thisPlayer.skill.tackling)
   if (common.isBetween(intensity, 65, 90)) {
     thisPlayer.stats.cards.yellow++
     if (thisPlayer.stats.cards.yellow == 2) {
       thisPlayer.stats.cards.red++
-      Object.defineProperty(thisPlayer, 'currentPOS', {
-        value: ['NP', 'NP'],
-        writable: false,
-        enumerable: true,
-        configurable: false
-      })
+      _sendOff(matchDetails, thisPlayer)
+      matchDetails.iterationLog.push(`Red card for: ${thisPlayer.name}`)
+    } else {
+      matchDetails.iterationLog.push(`Yellow card for: ${thisPlayer.name}`)
     }
   } else if (common.isBetween(intensity, 85, 100)) {
     thisPlayer.stats.cards.red++
-    Object.defineProperty(thisPlayer, 'currentPOS', {
-      value: ['NP', 'NP'],
-      writable: false,
-      enumerable: true,
-      configurable: false
-    })
+    _sendOff(matchDetails, thisPlayer)
+    matchDetails.iterationLog.push(`Red card for: ${thisPlayer.name}`)
   }
   if (opp.name == matchDetails.kickOffTeam.name) return setPositions.setSetpieceKickOffTeam(matchDetails)
   return setPositions.setSetpieceSecondTeam(matchDetails)
@@ -246,26 +240,20 @@ function completeSlide(matchDetails, thisPlayer, team, opp) {
 function completeTackleWhenCloseNoBall(matchDetails, thisPlayer, team, opp) {
   let foul = actions.resolveTackle(thisPlayer, team, opp, matchDetails)
   if (foul) {
-    let intensity = actions.foulIntensity()
+    let intensity = actions.foulIntensity(thisPlayer.skill.tackling)
     if (common.isBetween(intensity, 75, 90)) {
       thisPlayer.stats.cards.yellow++
       if (thisPlayer.stats.cards.yellow == 2) {
         thisPlayer.stats.cards.red++
-        Object.defineProperty(thisPlayer, 'currentPOS', {
-          value: ['NP', 'NP'],
-          writable: false,
-          enumerable: true,
-          configurable: false
-        })
+        _sendOff(matchDetails, thisPlayer)
+        matchDetails.iterationLog.push(`Red card for: ${thisPlayer.name}`)
+      } else {
+        matchDetails.iterationLog.push(`Yellow card for: ${thisPlayer.name}`)
       }
     } else if (common.isBetween(intensity, 90, 100)) {
       thisPlayer.stats.cards.red++
-      Object.defineProperty(thisPlayer, 'currentPOS', {
-        value: ['NP', 'NP'],
-        writable: false,
-        enumerable: true,
-        configurable: false
-      })
+      _sendOff(matchDetails, thisPlayer)
+      matchDetails.iterationLog.push(`Red card for: ${thisPlayer.name}`)
     }
   }
   if (opp.name == matchDetails.kickOffTeam.name) return setPositions.setSetpieceKickOffTeam(matchDetails)
@@ -461,6 +449,108 @@ function getInterceptTrajectory(opposition, ballPosition, pitchSize) {
   return POI
 }
 
+// ===========================================================================
+// 跑动速度 ← 敏捷 (agility → off-ball stride)
+// ===========================================================================
+// The original engine gave every player the same fixed stride (run ±1, sprint
+// ±2) regardless of agility, so a 95-agility winger and a 40-agility
+// centre-back covered identical ground. We scale the off-ball stride by
+// agility so faster players visibly outpace slower ones.
+//
+//   agility < 55           → slow   (run ±1, sprint ±1)
+//   55 ≤ agility < 85      → normal (run ±1, sprint ±2)  [original behaviour]
+//   agility ≥ 85           → fast   (run ±2, sprint ±3)
+
+function runStepArray(player) {
+  const agility = parseInt(player?.skill?.agility, 10)
+  if (Number.isFinite(agility) && agility >= 85) return [-2, 0, 2]
+  return [-1, 0, 1]
+}
+
+function sprintStepArray(player) {
+  const agility = parseInt(player?.skill?.agility, 10)
+  if (Number.isFinite(agility) && agility >= 85) return [-3, -2, 0, 2, 3]
+  if (Number.isFinite(agility) && agility < 55) return [-1, -1, 0, 1, 1]
+  return [-2, -1, 0, 1, 2]
+}
+
+// ===========================================================================
+// 红牌罚下 (sending off) — keep sent-off players at ['NP','NP'] every tick
+// ===========================================================================
+// Set-piece routines (free kicks, corners, throw-ins, goal kicks) reposition
+// every player and would otherwise resurrect a red-carded player. We record
+// the sent-off playerID and re-apply the 'NP' marker at the end of each tick.
+
+function _sendOff(matchDetails, player) {
+  player.currentPOS = ['NP', 'NP']
+  if (!matchDetails._sentOff) matchDetails._sentOff = []
+  if (!matchDetails._sentOff.includes(player.playerID)) matchDetails._sentOff.push(player.playerID)
+}
+
+export function reapplySentOff(matchDetails) {
+  const sent = matchDetails?._sentOff
+  if (!sent || sent.length === 0) return matchDetails
+  for (const team of [matchDetails.kickOffTeam, matchDetails.secondTeam]) {
+    if (!team?.players) continue
+    for (const p of team.players) {
+      if (sent.includes(p.playerID)) p.currentPOS = ['NP', 'NP']
+    }
+  }
+  return matchDetails
+}
+
+// ===========================================================================
+// 盯防 (marking) — assign isMarked to pass receivers each tick
+// ===========================================================================
+// ballMovement's pass/through-ball AI already READS `player.isMarked`
+// (marked receivers get a lower target score and a shorter reachable radius),
+// but nothing ever SET it, so the marking mechanic was dead code. This runs
+// once per tick (after movement, before ball actions) to decide who is being
+// tightly marked by the opposition.
+//
+// Marking duel: marker's positioning (tackling + agility) vs receiver's
+// agility to lose them. Even matchup → ~50% marked; a marker 20 points better
+// is almost always on them.
+
+export function assignMarking(matchDetails) {
+  _clearMarking(matchDetails.kickOffTeam)
+  _clearMarking(matchDetails.secondTeam)
+  _markReceivers(matchDetails.kickOffTeam, matchDetails.secondTeam)
+  _markReceivers(matchDetails.secondTeam, matchDetails.kickOffTeam)
+  return matchDetails
+}
+
+function _clearMarking(team) {
+  for (const p of team.players) {
+    if (p.currentPOS[0] === 'NP') continue
+    p.isMarked = false
+  }
+}
+
+function _markReceivers(receivers, markers) {
+  const MARK_RADIUS = 32
+  for (const receiver of receivers.players) {
+    if (receiver.injured) continue
+    if (receiver.position === 'GK') continue
+    if (receiver.hasBall) continue
+    if (receiver.currentPOS[0] === 'NP') continue
+    let closest = null
+    let closestDist = Infinity
+    for (const marker of markers.players) {
+      if (marker.injured) continue
+      if (marker.position === 'GK') continue
+      if (marker.currentPOS[0] === 'NP') continue
+      const d = common.distance(marker.currentPOS, receiver.currentPOS)
+      if (d < closestDist) { closestDist = d; closest = marker }
+    }
+    if (!closest || closestDist > MARK_RADIUS) continue
+    const markAbility = (parseInt(closest.skill.tackling, 10) + parseInt(closest.skill.agility, 10)) / 2
+    const escapeAbility = parseInt(receiver.skill.agility, 10)
+    const margin = markAbility - escapeAbility
+    if (common.getRandomNumber(-10, 10) < margin) receiver.isMarked = true
+  }
+}
+
 function getRunMovement(matchDetails, player, ballX, ballY) {
   let move = [0, 0]
 
@@ -486,7 +576,7 @@ function getRunMovement(matchDetails, player, ballX, ballY) {
 
   if (player.hasBall && side == `bottom`) return [common.getRandomNumber(0 + attSpeed, 2 + attSpeed), common.getRandomNumber(0, 2)]
   if (player.hasBall && side == `top`) return [common.getRandomNumber(-2 - attSpeed, 0 - attSpeed), common.getRandomNumber(-2, 0)]
-  let movementRun = [-1, 0, 1]
+  let movementRun = runStepArray(player)
   // Position-group-differentiated off-ball: defensive players less aggressive forward runs
   const runBias = isDefensivePosition(player.position) ? 1 : 0  // defensive players pick middle index more
 
@@ -572,7 +662,7 @@ function getSprintMovement(matchDetails, player, ballX, ballY) {
     common.getRandomNumber(-4 - wideBoost, 4 + wideBoost),
     common.getRandomNumber(2 + fwdBoost, 4 + attBoost + fwdBoost)
   ]
-  let movementSprint = [-2, -1, 0, 1, 2]
+  let movementSprint = sprintStepArray(player)
   // Defensive players: smaller sprints closer to formation
   const defBias = isDefensivePosition(player.position) ? 1 : 0
 

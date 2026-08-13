@@ -3,6 +3,12 @@ import * as setVariables from './setVariables.js'
 import * as setFreekicks from './setFreekicks.js'
 import { isDefensivePosition, isMidfieldPosition, isAttackingPosition, isWidePosition, getPositionGroup } from './positionGroup.js'
 
+// Place a player at a position unless they are sent off (currentPOS === ['NP','NP']).
+// Red-carded players are off the pitch and must never be repositioned by set pieces.
+function _place(player, pos) {
+  if (player?.currentPOS?.[0] !== 'NP') player.currentPOS = pos
+}
+
 function setGoalieHasBall(matchDetails, thisGoalie) {
   let { kickOffTeam, secondTeam } = matchDetails
   let team = (kickOffTeam.players[0].playerID == thisGoalie.playerID) ? kickOffTeam : secondTeam
@@ -31,6 +37,7 @@ function setTopRightCornerPositions(matchDetails) {
   let defence = (kickOffTeamKeepYPos > halfPitchSize) ? matchDetails.secondTeam : matchDetails.kickOffTeam
   // Position-group-based corner assignment: defensive players hold line, attacking players push forward
   for (let player of attack.players) {
+    if (player.currentPOS[0] === 'NP') continue
     if (isDefensivePosition(player.position)) {
       player.currentPOS = player.originPOS.map(x => x)
     } else {
@@ -38,15 +45,16 @@ function setTopRightCornerPositions(matchDetails) {
     }
   }
   for (let player of defence.players) {
+    if (player.currentPOS[0] === 'NP') continue
     if (isDefensivePosition(player.position)) {
       player.currentPOS = player.originPOS.map(x => x)
     } else {
       player.currentPOS = common.getRandomTopPenaltyPosition(matchDetails)
     }
   }
-  attack.players[1].currentPOS = [pitchWidth, 0]
-  attack.players[4].currentPOS = [pitchWidth - 10, 20]
-  defence.players[4].currentPOS = [pitchWidth - 12, 10]
+  _place(attack.players[1], [pitchWidth, 0])
+  _place(attack.players[4], [pitchWidth - 10, 20])
+  _place(defence.players[4], [pitchWidth - 12, 10])
   matchDetails.ball.position = [pitchWidth, 0, 0]
   setBallSpecificCornerValue(matchDetails, attack)
   matchDetails.endIteration = true
@@ -60,6 +68,7 @@ function setTopLeftCornerPositions(matchDetails) {
   let attack = (kickOffTeamKeepYPos > halfPitchSize) ? matchDetails.kickOffTeam : matchDetails.secondTeam
   let defence = (kickOffTeamKeepYPos > halfPitchSize) ? matchDetails.secondTeam : matchDetails.kickOffTeam
   for (let player of attack.players) {
+    if (player.currentPOS[0] === 'NP') continue
     if (isDefensivePosition(player.position)) {
       player.currentPOS = player.originPOS.map(x => x)
     } else {
@@ -67,15 +76,16 @@ function setTopLeftCornerPositions(matchDetails) {
     }
   }
   for (let player of defence.players) {
+    if (player.currentPOS[0] === 'NP') continue
     if (isDefensivePosition(player.position)) {
       player.currentPOS = player.originPOS.map(x => x)
     } else {
       player.currentPOS = common.getRandomTopPenaltyPosition(matchDetails)
     }
   }
-  attack.players[1].currentPOS = [0, 0]
-  attack.players[4].currentPOS = [10, 20]
-  defence.players[1].currentPOS = [12, 10]
+  _place(attack.players[1], [0, 0])
+  _place(attack.players[4], [10, 20])
+  _place(defence.players[1], [12, 10])
   matchDetails.ball.position = [0, 0, 0]
   setBallSpecificCornerValue(matchDetails, attack)
   matchDetails.endIteration = true
@@ -90,6 +100,7 @@ function setBottomLeftCornerPositions(matchDetails) {
   let attack = (kickOffTeamKeepYPos < halfPitchSize) ? matchDetails.kickOffTeam : matchDetails.secondTeam
   let defence = (kickOffTeamKeepYPos < halfPitchSize) ? matchDetails.secondTeam : matchDetails.kickOffTeam
   for (let player of attack.players) {
+    if (player.currentPOS[0] === 'NP') continue
     if (isDefensivePosition(player.position)) {
       player.currentPOS = player.originPOS.map(x => x)
     } else {
@@ -97,15 +108,16 @@ function setBottomLeftCornerPositions(matchDetails) {
     }
   }
   for (let player of defence.players) {
+    if (player.currentPOS[0] === 'NP') continue
     if (isDefensivePosition(player.position)) {
       player.currentPOS = player.originPOS.map(x => x)
     } else {
       player.currentPOS = common.getRandomBottomPenaltyPosition(matchDetails)
     }
   }
-  attack.players[1].currentPOS = [0, pitchHeight]
-  attack.players[4].currentPOS = [10, pitchHeight - 20]
-  defence.players[1].currentPOS = [12, pitchHeight - 10]
+  _place(attack.players[1], [0, pitchHeight])
+  _place(attack.players[4], [10, pitchHeight - 20])
+  _place(defence.players[1], [12, pitchHeight - 10])
   matchDetails.ball.position = [0, pitchHeight, 0]
   setBallSpecificCornerValue(matchDetails, attack)
   matchDetails.endIteration = true
@@ -120,6 +132,7 @@ function setBottomRightCornerPositions(matchDetails) {
   let attack = (kickOffTeamKeepYPos < halfPitchSize) ? matchDetails.kickOffTeam : matchDetails.secondTeam
   let defence = (kickOffTeamKeepYPos < halfPitchSize) ? matchDetails.secondTeam : matchDetails.kickOffTeam
   for (let player of attack.players) {
+    if (player.currentPOS[0] === 'NP') continue
     if (isDefensivePosition(player.position)) {
       player.currentPOS = player.originPOS.map(x => x)
     } else {
@@ -127,15 +140,16 @@ function setBottomRightCornerPositions(matchDetails) {
     }
   }
   for (let player of defence.players) {
+    if (player.currentPOS[0] === 'NP') continue
     if (isDefensivePosition(player.position)) {
       player.currentPOS = player.originPOS.map(x => x)
     } else {
       player.currentPOS = common.getRandomBottomPenaltyPosition(matchDetails)
     }
   }
-  attack.players[1].currentPOS = [pitchWidth, pitchHeight]
-  attack.players[4].currentPOS = [pitchWidth - 10, pitchHeight - 20]
-  defence.players[4].currentPOS = [pitchWidth - 12, pitchHeight - 10]
+  _place(attack.players[1], [pitchWidth, pitchHeight])
+  _place(attack.players[4], [pitchWidth - 10, pitchHeight - 20])
+  _place(defence.players[4], [pitchWidth - 12, pitchHeight - 10])
   matchDetails.ball.position = [pitchWidth, pitchHeight, 0]
   setBallSpecificCornerValue(matchDetails, attack)
   matchDetails.endIteration = true
@@ -143,15 +157,20 @@ function setBottomRightCornerPositions(matchDetails) {
 }
 
 function setBallSpecificCornerValue(matchDetails, attack) {
-  attack.players[1].hasBall = true
-  matchDetails.ball.lastTouch.playerName = attack.players[1].name
-  matchDetails.ball.lastTouch.playerID = attack.players[1].playerID
-  matchDetails.ball.lastTouch.teamID = attack.teamID
-  matchDetails.ball.lastTouch.deflection = false
-  matchDetails.ball.ballOverIterations = []
-  matchDetails.ball.withPlayer = true
-  matchDetails.ball.Player = attack.players[1].playerID
-  matchDetails.ball.withTeam = attack.teamID
+  const taker = attack.players[1]
+  // If the designated corner taker is sent off, leave the ball loose — the
+  // engine's closest-player logic picks an active player on the next tick.
+  if (taker.currentPOS[0] !== 'NP') {
+    taker.hasBall = true
+    matchDetails.ball.lastTouch.playerName = taker.name
+    matchDetails.ball.lastTouch.playerID = taker.playerID
+    matchDetails.ball.lastTouch.teamID = attack.teamID
+    matchDetails.ball.lastTouch.deflection = false
+    matchDetails.ball.ballOverIterations = []
+    matchDetails.ball.withPlayer = true
+    matchDetails.ball.Player = taker.playerID
+    matchDetails.ball.withTeam = attack.teamID
+  }
   matchDetails.iterationLog.push(`Corner to - ${attack.name}`)
 }
 
@@ -261,33 +280,33 @@ function ballThrowInPosition(matchDetails, attack) {
 }
 
 function attackLeftThrowInPlayerPosition(pitchHeight, attack, place) {
-  attack.players[8].currentPOS = [15, place]
-  attack.players[7].currentPOS = [10, common.upToMax(place + 10, pitchHeight)]
-  attack.players[9].currentPOS = [10, common.upToMin(place - 10, 0)]
-  attack.players[5].hasBall = true
+  _place(attack.players[8], [15, place])
+  _place(attack.players[7], [10, common.upToMax(place + 10, pitchHeight)])
+  _place(attack.players[9], [10, common.upToMin(place - 10, 0)])
+  if (attack.players[5].currentPOS[0] !== 'NP') attack.players[5].hasBall = true
 }
 
 function defenceLeftThrowInPlayerPosition(pitchHeight, defence, place) {
-  defence.players[5].currentPOS = [20, place]
-  defence.players[7].currentPOS = [30, common.upToMax(place + 5, pitchHeight)]
-  defence.players[8].currentPOS = [25, common.upToMin(place - 15, 0)]
-  defence.players[9].currentPOS = [10, common.upToMin(place - 30, 0)]
+  _place(defence.players[5], [20, place])
+  _place(defence.players[7], [30, common.upToMax(place + 5, pitchHeight)])
+  _place(defence.players[8], [25, common.upToMin(place - 15, 0)])
+  _place(defence.players[9], [10, common.upToMin(place - 30, 0)])
 }
 
 function attackRightThrowInPlayerPosition(pitchSize, attack, place) {
   const [pitchWidth, pitchHeight] = pitchSize
-  attack.players[8].currentPOS = [pitchWidth - 15, place]
-  attack.players[7].currentPOS = [pitchWidth - 10, common.upToMax(place + 10, pitchHeight)]
-  attack.players[9].currentPOS = [pitchWidth - 10, common.upToMin(place - 10, 0)]
-  attack.players[5].hasBall = true
+  _place(attack.players[8], [pitchWidth - 15, place])
+  _place(attack.players[7], [pitchWidth - 10, common.upToMax(place + 10, pitchHeight)])
+  _place(attack.players[9], [pitchWidth - 10, common.upToMin(place - 10, 0)])
+  if (attack.players[5].currentPOS[0] !== 'NP') attack.players[5].hasBall = true
 }
 
 function defenceRightThrowInPlayerPosition(pitchSize, defence, place) {
   const [pitchWidth, pitchHeight] = pitchSize
-  defence.players[5].currentPOS = [pitchWidth - 20, place]
-  defence.players[7].currentPOS = [pitchWidth - 30, common.upToMax(place + 5, pitchHeight)]
-  defence.players[8].currentPOS = [pitchWidth - 25, common.upToMin(place - 15, 0)]
-  defence.players[9].currentPOS = [pitchWidth - 10, common.upToMin(place - 30, 0)]
+  _place(defence.players[5], [pitchWidth - 20, place])
+  _place(defence.players[7], [pitchWidth - 30, common.upToMax(place + 5, pitchHeight)])
+  _place(defence.players[8], [pitchWidth - 25, common.upToMin(place - 15, 0)])
+  _place(defence.players[9], [pitchWidth - 10, common.upToMin(place - 30, 0)])
 }
 
 function setBottomGoalKick(matchDetails) {
@@ -609,6 +628,7 @@ function keepInBoundaries(matchDetails, kickteamID, ballIntended) {
 
 function setPlayerPositions(matchDetails, team, extra) {
   for (const thisPlayer of team.players) {
+    if (thisPlayer.currentPOS[0] === 'NP') continue
     if (thisPlayer.position == `GK`) thisPlayer.currentPOS = thisPlayer.originPOS.map(x => x)
     else {
       thisPlayer.currentPOS = thisPlayer.originPOS.map(x => x)
@@ -632,6 +652,9 @@ function switchSide(matchDetails, team) {
   for (const thisPlayer of team.players) {
     if (!thisPlayer.originPOS) throw new Error(`Each player must have an origin position set`)
     thisPlayer.originPOS[1] = matchDetails.pitchSize[1] - thisPlayer.originPOS[1]
+    // Sent-off players (currentPOS === ['NP','NP']) stay off the pitch —
+    // do not place them back on or reset their fitness.
+    if (thisPlayer.currentPOS[0] === 'NP') continue
     thisPlayer.currentPOS = thisPlayer.originPOS.map(x => x)
     thisPlayer.intentPOS = thisPlayer.originPOS.map(x => x)
     thisPlayer.fitness = (thisPlayer.fitness < 51) ? common.round((thisPlayer.fitness + 50), 2) : 100

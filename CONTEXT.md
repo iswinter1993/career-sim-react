@@ -53,9 +53,9 @@ Components now dispatch simple events (`CHOOSE`, `CONTINUE`); the reducer delega
 ## Match Simulation (比赛模拟)
 
 - **比赛日（Match Day）**: 新增的 pending 类型 `match`，与现有事件（event/transfer/academy）交替出现。每赛季约5场关键比赛。
-- **比赛引擎**: `footballsimulationengine` v5.0.0，回合制离散迭代。每场比赛调用多次 `playIteration()`。
+- **比赛引擎**: 项目内引擎 fork `src/engine/`（`footballsimulationengine` v5.0.0 的 ESM 改造版），回合制离散迭代。每场比赛调用多次 `playIteration()`。
 - **迭代与渲染分离**: 引擎快速独立运行迭代，Canvas 渲染层通过 `requestAnimationFrame` 从当前 matchDetails 快照独立绘制，不等待引擎。
-- **球员映射**: 玩家的 15 项子属性（技术/身体/精神）→ `footballsimulationengine` 10 项技能。队友随机生成。
+- **球员映射**: 玩家的 15 项子属性（技术/身体/精神）→ 引擎 fork 的 10 项技能。队友随机生成。
 - **比赛阵容**: 每队 16 人（首发 11 人 + 替补 5 人）。玩家球员占据首发对应位置。
 - **战术介入**: 赛前设置战术（阵型、心态、首发）。比赛中可随时暂停，修改战术/换人/指定动作后继续。3 次换人名额。
 - **暂停机制**: 暂停时引擎停止迭代，玩家修改后点击继续恢复迭代。
@@ -65,7 +65,7 @@ Components now dispatch simple events (`CHOOSE`, `CONTINUE`); the reducer delega
 - **比赛播报**: 实时滚动文字流 + 关键时刻弹出醒目提示（进球、红牌、伤病等）。
 - **赛后评分**: 6.0 起评分 ± 比赛事件加权 ± 赛果/零封红利。评分驱动子属性增长，与赛季 `tickAttributes` 叠加（非替代）。
 - **比赛 UI 布局**: 上下布局——上半部分 Canvas 比赛动画，下半部分 tab 切换（技术统计/积分榜/播报日志）。
-- **属性值域**: 子属性从 0-20 改为 0-100，与 footballsimulationengine 技能值域对齐。
+- **属性值域**: 子属性从 0-20 改为 0-100，与引擎 fork 技能值域对齐。
 
 ## UI
 

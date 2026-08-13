@@ -4,6 +4,8 @@
 **Status**: Draft
 **Labels**: ready-for-agent
 
+> **现状更新 (2026-08-13)**: 引擎现已以本地 ESM fork `src/engine/` 作为实际运行引擎（`src/matchEngine.js` 直接 import，不再依赖 npm 包）。本 spec 中的「`footballsimulationengine` 未集成」是集成前的历史背景。
+
 ---
 
 ## Problem Statement
@@ -56,7 +58,7 @@
 
 ### 1. 比赛引擎封装 (`matchEngine` 模块)
 
-将 `footballsimulationengine` 的 CJS API 包装为浏览器友好的 facade：
+将 `src/engine/` 引擎 fork 的 API 包装为浏览器友好的 facade：
 
 - **`createMatch(homeTeam, awayTeam, pitch, userTactics)`** → matchSession 对象
 - **`runIteration(matchSession)`** → 更新后的 matchSession（单次迭代）
@@ -127,7 +129,7 @@ matchState 形状：
 {
   homeTeam: team,           // 含 16 名球员（11 首发 + 5 替补）
   awayTeam: team,           // 同上
-  matchDetails: object,     // footballsimulationengine 的快照
+  matchDetails: object,     // 引擎快照
   paused: boolean,
   substitutionsLeft: 3,
   iterationLog: string[],   // 聚合的迭代日志
@@ -241,7 +243,7 @@ matchState 形状：
 
 ## Further Notes
 
-- `footballsimulationengine` 的 CJS 模块在浏览器中使用需要 Vite 正确处理转换。已在 ADR 0002 中标注 `engine.js:89` 的 console.log 污染。
+- 引擎已 vendored 为 `src/engine/` 的 ESM fork，`src/matchEngine.js` 直接 import，无需 CJS→ESM 转换，也不再依赖 npm 包。
 - 比赛 MVP 建议先实现自动模拟模式（快速验证所有流程打通），再叠加手动暂停介入，最后做 Canvas 动画。
 - 积分榜 + 赛程的预设计在后期切换真实数据时只需替换数据源，接口不变。
 - 评分公式的 >200 种事件映射在 MVP 中可精简为核心 20-30 种事件，后续扩展。

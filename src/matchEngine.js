@@ -1,7 +1,7 @@
-// Facade wrapper around footballsimulationengine (CJS → ESM bridge).
+// Facade wrapper around the in-repo match engine fork (src/engine/engine.js).
 //
-// The npm package uses `require()` (CommonJS) but Vite's bundler handles
-// conversion automatically. This module presents a clean async API while
+// The engine is the vendored ESM fork of `footballsimulationengine` v5.0.0
+// (originally CommonJS). This module presents a clean async API while
 // suppressing the engine's noisy console.log, normalising data shapes,
 // and exposing convenience helpers for React integration.
 //
@@ -37,14 +37,100 @@
 //   isMatchFinished(matchDetails)             → boolean (both halves done)
 //   destroyMatch()                            → restore console.log
 
-import * as Engine from 'footballsimulationengine';
+import * as Engine from './engine/engine.js';
 import { computeOriginPOSForStarters, getDefaultFormation } from './engine/lib/formation.js';
 import { getDefaultRole, STYLE_PRESETS, applyTeamStrategy, validateRoleForPosition } from './engine/lib/tactics.js';
+import { getMentalityStrategy, OFFENSIVE_SKILLS, DEFENSIVE_SKILLS } from './engine/lib/mentality.js';
 import { createMatchStatsTracker, recordMatchEvent, calculateDerivedStats, calculateTeamDerivedStats, extractMatchTimeline, getTeamPassAccuracy, getTeamTackleRate } from './engine/lib/matchStats.js';
+import { parseMatchEvent, createMatchEventBus, emitLogEvents } from './matchEvents.js';
+import { assemblePlayer } from './playerComponents.js';
+import { bumpRevision, memoizeByRevision } from './dirtyMemo.js';
+import { PITCH, ITERATIONS_PER_HALF, COMMENTARY_TEMPLATES } from './gameConfig.js';
+import { captureMatchState, restoreMatchState, serializeMatchState, deserializeMatchState } from './matchMemento.js';
+
+// Re-export for backward compatibility — the placement counters moved into
+// playerComponents.js as part of Design Pattern #5 (Component).
+export { resetPlacementCounters } from './playerComponents.js';
 
 // ---------------------------------------------------------------------------
-// console.log suppression
+// Chinese commentary templates
+// (moved to gameConfig.js — Design Pattern #9: Data-driven static config)
 // ---------------------------------------------------------------------------
+
+/**
+ * Translate an engine log string to Chinese commentary text.
+ * Returns the translated text, or the original if no template matches.
+ */
+function _translateCommentary(text, matchDetails) {
+  const t = text;
+  if (!t) return '';
+
+  // We do NOT check for Chinese characters here — engine log strings are
+  // always English even when they contain Chinese player/team names
+  // (e.g. "Goal Scored by - 武文强 - (主队)"). We must translate anyway.
+
+  const kickOff = matchDetails.kickOffTeam;
+  const second = matchDetails.secondTeam;
+  const kickIsHome = kickOff?.name === matchDetails._homeTeamName;
+
+  // Determine which team performed the action (by player name OR team name)
+  function _resolveTeam(entryText) {
+    for (const p of (kickOff?.players || [])) {
+      if (p.name && entryText.includes(p.name)) return kickIsHome ? '🏠 ' : '🏟 ';
+    }
+    for (const p of (second?.players || [])) {
+      if (p.name && entryText.includes(p.name)) return kickIsHome ? '🏟 ' : '🏠 ';
+    }
+    // Fall back to team name match
+    if (kickOff?.name && entryText.includes(kickOff.name)) return kickIsHome ? '🏠 ' : '🏟 ';
+    if (second?.name && entryText.includes(second.name)) return kickIsHome ? '🏟 ' : '🏠 ';
+    return '';
+  }
+
+  // Extract player name — look for names that exist in either team
+  function _extractName(entryText) {
+    const allPlayers = [...(kickOff?.players || []), ...(second?.players || [])];
+    let best = null;
+    for (const p of allPlayers) {
+      if (p.name && entryText.includes(p.name)) {
+        if (!best || p.name.length > best.length) best = p.name;
+      }
+    }
+    return best;
+  }
+
+  
+  // Extract team name from text (fallback: use resolve)
+  function _getTeamName(entryText) {
+    // Match "Team to kick off - TeamName" / "freekick to: TeamName [...]" / etc
+    const m = entryText.match(/- (.+?)($|\[|:)/) || entryText.match(/to: (.+?)($|\[)/);
+    if (m) return m[1].trim();
+    // Check if text contains a known team name
+    if (kickOff?.name && entryText.includes(kickOff.name)) return kickOff.name;
+    if (second?.name && entryText.includes(second.name)) return second.name;
+    return '';
+  }
+
+  const teamTag = _resolveTeam(t);
+  const playerName = _extractName(t) || '';
+
+  // Try each template pattern. Pass the full raw text so templates
+  // can extract structured info (team name, coordinates, etc.).
+  for (const [pattern, fn] of Object.entries(COMMENTARY_TEMPLATES)) {
+    if (t.includes(pattern)) {
+      try {
+        const result = fn(t, teamTag, playerName);
+        if (result) return result;
+        // If template returned empty string (boilerplate suppression),
+        // return empty so parseIterationEvents can filter it out.
+        if (result === '') return '';
+      } catch (_) { /* fall through */ }
+      return t; // fallback: return raw text if template fails
+    }
+  }
+
+  return t;
+}
 
 const _originalLog = console.log;
 let _suppressed = false;
@@ -60,6 +146,35 @@ function _restoreLog() {
   _suppressed = false;
 }
 
+/**
+ * Ensure the ball object has every property the engine's validateBall expects.
+ * JSON.parse(JSON.stringify(…)) drops keys whose value is undefined, so when
+ * the engine leaves withTeam / Player / withPlayer in an undefined state and we
+ * later restore from a pristine snapshot, the next tick's validateBall throws.
+ * This guard fills in safe defaults for any missing ball properties.
+ */
+function _repairBall(matchDetails) {
+  if (!matchDetails?.ball) return;
+  const b = matchDetails.ball;
+  const defaults = {
+    position: [340, 525, 0],
+    withPlayer: false,
+    Player: '',
+    withTeam: '',
+    direction: 'wait',
+    ballOverIterations: [],
+  };
+  for (const [key, fallback] of Object.entries(defaults)) {
+    if (!Object.prototype.hasOwnProperty.call(b, key) || b[key] === undefined || b[key] === null) {
+      b[key] = fallback;
+    }
+  }
+  // Also ensure lastTouch sub-object exists (used by engine logging)
+  if (!b.lastTouch || typeof b.lastTouch !== 'object') {
+    b.lastTouch = { playerName: '', playerID: '', teamID: '', bodyPart: '' };
+  }
+}
+
 /** Restore console.log — call after the match concludes. */
 export function destroyMatch() {
   _restoreLog();
@@ -69,74 +184,23 @@ export function destroyMatch() {
 // Constants
 // ---------------------------------------------------------------------------
 
-export const DEFAULT_PITCH = {
-  pitchWidth: 680,
-  pitchHeight: 1050,
-  goalWidth: 90,
-};
+// Backward-compatible re-exports — the canonical values now live in
+// gameConfig.js (Design Pattern #9). Existing importers (matchSession.js,
+// MatchView.jsx) keep working via `MatchEngine.DEFAULT_ITERATIONS` etc.
+export const DEFAULT_PITCH = PITCH;
 
-// Iterations per half. Half the author's reference (gamelength=12000→6000/half)
-// because we batch 4 iterations per tick, giving ~12s per half at normal speed.
-export const DEFAULT_ITERATIONS = 3000;
+// Iterations per half (see gameConfig.ITERATIONS_PER_HALF).
+export const DEFAULT_ITERATIONS = ITERATIONS_PER_HALF;
 
 // ---------------------------------------------------------------------------
 // Player / Team builder helpers
 // ---------------------------------------------------------------------------
 
-// Engine-compatible starting positions matching the sample initiated_team.json.
-// Supports all 12 positions: GK, CB, LB, RB, CDM, CM, CAM, LM, RM, LW, RW, ST
-const POSITION_PLACES = {
-  GK:  [340, 0],
-  LB:  [80,  80],
-  CB:  [230, 80],   // alternates with 420 for second CB
-  RB:  [600, 80],
-  CDM: [230, 170],  // deeper than CM, between CB and CM
-  LM:  [80,  270],
-  CM:  [230, 270],  // alternates with 420 for second CM
-  RM:  [600, 270],
-  CAM: [340, 370],  // more advanced than CM, behind the striker
-  LW:  [180, 420],  // wider advanced position
-  RW:  [500, 420],  // wider advanced position
-  ST:  [280, 500],  // alternates with 440 for second ST
-};
-
-/** Alternating x-offset for paired positions (two CBs, two CMs, two STs, two CDMs). */
-const PAIRED_OFFSET_X = {
-  CB:  190,  // 230 → 420
-  CM:  190,  // 230 → 420
-  CDM: 190,  // 230 → 420
-  ST:  160,  // 280 → 440
-};
-
-// Track pairing counter so two CBs / two CMs / two CDMs / two STs split left/right
-const _pairCount = {};
-
-function _placementFor(p) {
-  const pos = p.position || 'CM';
-  const base = POSITION_PLACES[pos] || [340, 300];
-
-  // Paired position: alternate x so two same-position players spread out
-  if (PAIRED_OFFSET_X[pos] != null) {
-    const n = _pairCount[pos] || 0;
-    _pairCount[pos] = n + 1;
-    if (n > 0) {
-      return [base[0] + PAIRED_OFFSET_X[pos], base[1]];
-    }
-  }
-
-  return [base[0], base[1]];
-}
-
-/** Reset pairing counters (call before building each new team). */
-export function resetPlacementCounters() {
-  _pairCount.CB  = 0;
-  _pairCount.CM  = 0;
-  _pairCount.CDM = 0;
-  _pairCount.ST  = 0;
-}
-
 /**
  * Build a single engine-compatible Player JSON from our internal player shape.
+ * Delegates to playerComponents.assemblePlayer() (Design Pattern #5: Component),
+ * which composes identity / skill / placement / action-state / stats / physical /
+ * substitution components into the flat object the engine expects.
  *
  * @param {object} p — { id, name, position, engineSkills, subAttrs, height }
  * @param {number[]} [originPOS] — optional formation-based [x, y] override
@@ -145,37 +209,7 @@ export function resetPlacementCounters() {
  * @returns {object} engine-ready player
  */
 export function buildPlayerJson(p, originPOS, options) {
-  const skills = p.engineSkills || {};
-  const [px, py] = originPOS || _placementFor(p);
-  return {
-    name: p.name || p.id,
-    playerID: p.playerID || p.id,
-    position: p.position || 'CM',
-    rating: String(p.ovr || 50),
-    skill: {
-      passing:        String(skills.passing ?? 50),
-      shooting:       String(skills.shooting ?? 50),
-      tackling:       String(skills.tackling ?? 50),
-      saving:         String(skills.saving ?? 50),
-      agility:        String(skills.agility ?? 50),
-      strength:       String(skills.strength ?? 50),
-      penalty_taking: String(skills.penalty_taking ?? 50),
-      perception:     String(skills.perception ?? 50),
-      jumping:        String(skills.jumping ?? 50),
-      control:        String(skills.control ?? 50),
-    },
-    currentPOS: [px, py],
-    originPOS: [px, py],
-    fitness: skills.fitness ?? 100,
-    height: p.height ?? 180,
-    injured: p.injured ?? false,
-    // Substitution metadata
-    isSubstitute: options?.isSubstitute || false,
-    subbedOnMinute: options?.subbedOnMinute || null,
-    replacedPlayerID: options?.replacedPlayerID || null,
-    effectivePosition: options?.effectivePosition || p.position || 'CM',
-    familiarityModifier: options?.familiarityModifier ?? 1.0,
-  };
+  return assemblePlayer(p, originPOS, options);
 }
 
 /**
@@ -373,57 +407,38 @@ export function getActiveTeamStrategy(matchDetails, side) {
 // Core API wrappers
 // ---------------------------------------------------------------------------
 
-// Mentality → engine intent mapping
-// The engine's team.intent controls AI aggression level
-const MENTALITY_INTENT = {
-  ultra_attack: 'attack',
-  attack:       'attack',
-  balanced:     'balanced',
-  defend:       'defend',
-  ultra_defend: 'defend',
-};
-
 /**
  * Apply mentality modifiers to a team's players before match creation.
  * Higher mentality → boosted offensive skills, lowered defensive skills.
  * Lower mentality → boosted defensive skills, lowered offensive skills.
  *
+ * Mentality effects (engine intent, skill modifiers, defensive-line depth)
+ * are unified in engine/lib/mentality.js (Design Pattern #3: Strategy); this
+ * function only applies the skill-modifier slice of that strategy.
+ *
  * @param {object} team — engine-ready team object
- * @param {string} mentalityKey — one of MENTALITY_INTENT keys
+ * @param {string} mentalityKey — e.g. 'attack' | 'balanced' | 'defend'
  * @returns {object} modified team (shallow clone)
  */
 export function applyMentalityToTeam(team, mentalityKey) {
   if (!team || !mentalityKey) return team;
-  const intentVal = MENTALITY_INTENT[mentalityKey] || 'balanced';
+  const strategy = getMentalityStrategy(mentalityKey);
 
   // Set team-level intent
-  const modified = { ...team, intent: intentVal, _mentality: mentalityKey };
+  const modified = { ...team, intent: strategy.intent, _mentality: mentalityKey };
 
   // Boost/scaledown per-player skills based on mentality
-  // ultra_attack: +15% shooting/passing, -10% tackling
-  // attack: +8% shooting/passing, -5% tackling
-  // defend: -8% shooting/passing, +10% tackling
-  // ultra_defend: -15% shooting/passing, +20% tackling
-  const offensiveSkills = ['shooting', 'passing', 'control'];
-  const defensiveSkills = ['tackling', 'strength', 'perception'];
-
-  let offMod = 1.0, defMod = 1.0;
-  switch (mentalityKey) {
-    case 'ultra_attack':  offMod = 1.15; defMod = 0.90; break;
-    case 'attack':        offMod = 1.08; defMod = 0.95; break;
-    case 'defend':        offMod = 0.92; defMod = 1.10; break;
-    case 'ultra_defend':  offMod = 0.85; defMod = 1.20; break;
-    default: break;
-  }
+  const offMod = strategy.skillModifiers.offensive;
+  const defMod = strategy.skillModifiers.defensive;
 
   const players = team.players.map((p) => {
     const skill = { ...p.skill };
-    for (const key of offensiveSkills) {
+    for (const key of OFFENSIVE_SKILLS) {
       if (skill[key] != null) {
         skill[key] = String(Math.min(100, Math.round(Number(skill[key]) * offMod)));
       }
     }
-    for (const key of defensiveSkills) {
+    for (const key of DEFENSIVE_SKILLS) {
       if (skill[key] != null) {
         skill[key] = String(Math.min(100, Math.round(Number(skill[key]) * defMod)));
       }
@@ -519,11 +534,74 @@ export async function createMatch(homeTeam, awayTeam, pitch, tactics) {
   // --- Stats tracker (Phase 5.2) ---
   md._statsTracker = createMatchStatsTracker();
 
+  // --- Structured event pipeline (Design Pattern #1: Observer) ---
+  // A single parser (parseMatchEvent) turns each engine log string into a
+  // typed event; subscribers consume them via the bus. The stats tracker is
+  // the first subscriber; commentary/ratings can attach later without
+  // touching the tick loop.
+  md._eventBus = createMatchEventBus();
+  md._eventBus.on('*', (ev, ctx) => _trackStatsEvent(ctx._statsTracker, ctx, ev));
+
   md._half = 1;
   md._halfIteration = 0;
   md._finished = false;
 
+  // Dirty Flag (Design Pattern #8) — revision counter for memoized derived
+  // data (getMatchSummary / getPlayerStats). Bumped on every mutation.
+  md._revision = 0;
+
   return md;
+}
+
+// ---------------------------------------------------------------------------
+// Memento save/load (Design Pattern #10)
+// ---------------------------------------------------------------------------
+
+/**
+ * Snapshot the live match into a serializable object. Runtime-only state (the
+ * event bus) is excluded; the stats tracker is captured as raw data and
+ * rehydrated with live getters on restore.
+ *
+ * @param {object} matchDetails
+ * @returns {object|null} snapshot — safe to JSON.stringify for storage
+ */
+export function saveMatch(matchDetails) {
+  return captureMatchState(matchDetails);
+}
+
+/**
+ * Rebuild a live match from a snapshot, re-attaching the event bus and
+ * re-wiring the stats subscriber. Returns a NEW object.
+ *
+ * @param {object} snapshot
+ * @returns {object} live matchDetails
+ */
+export function loadMatch(snapshot) {
+  return restoreMatchState(snapshot, {
+    statsSubscriber: (ev, ctx) => _trackStatsEvent(ctx._statsTracker, ctx, ev),
+  });
+}
+
+/**
+ * Serialize the match to a JSON string for persistent storage.
+ *
+ * @param {object} matchDetails
+ * @returns {string} JSON
+ */
+export function serializeMatch(matchDetails) {
+  return serializeMatchState(matchDetails);
+}
+
+/**
+ * Restore a match from a saved JSON string.
+ *
+ * @param {string} json
+ * @returns {object} live matchDetails
+ */
+export function deserializeMatch(json) {
+  return deserializeMatchState(json, {
+    statsSubscriber: (ev, ctx) => _trackStatsEvent(ctx._statsTracker, ctx, ev),
+  });
 }
 
 /**
@@ -534,18 +612,58 @@ export async function createMatch(homeTeam, awayTeam, pitch, tactics) {
  */
 export async function runIteration(matchDetails) {
   _suppressLog();
+  // Deep-clone before engine mutation. When playIteration throws mid-way,
+  // matchDetails is left in a partially-mutated, inconsistent state
+  // (e.g. player positions updated but ball not moved). If we return that
+  // corrupted object, validate.validatePlayerPositions at the top of the
+  // NEXT playIteration call throws again — and the match freezes forever.
+  // By keeping a pristine snapshot we can discard the broken state
+  // entirely and let the sim recover on the next tick.
+  const pristine = JSON.parse(JSON.stringify(matchDetails));
+
+  // Defensive: repair the ball object before calling the engine.
+  // The engine occasionally leaves the ball in a state where `withTeam`
+  // or other required properties are undefined — and JSON.parse(JSON.stringify(…))
+  // drops undefined keys, causing validateBall to throw on the next tick.
+  // This guard ensures the ball always has every property the validator expects.
+  _repairBall(matchDetails);
+
   try {
+    // Clear the log before each engine iteration so only this tick's new
+    // entries remain. The engine (engine.js line 45) also clears and re-adds
+    // boilerplate, but we clear first so the returned log is a clean delta.
+    // parseIterationEvents and the event bus both operate on this per-tick
+    // slice.
+    matchDetails.iterationLog = [];
+
     const md = await Engine.playIteration(matchDetails);
     md._half = matchDetails._half || 1;
     md._halfIteration = (matchDetails._halfIteration || 0) + 1;
+    bumpRevision(md);
+
+    // Parse this tick's new log entries ONCE into typed events and emit them
+    // on the bus; the stats subscriber (and future subscribers) react here.
+    emitLogEvents(md, md.iterationLog);
+
     return md;
   } catch (e) {
     // Engine-internal boundary case (e.g. "player.skill" on undefined during
-    // a penalty or tackle resolution). Skip this iteration gracefully — the
-    // match state is preserved and the next tick will likely succeed.
+    // a penalty or tackle resolution, or a player moved off the pitch).
+    // Restore the pristine copy so the corrupted partial mutation doesn't
+    // poison the next tick — without this, validate at the top of
+    // playIteration would throw again and the match animation would freeze.
     console.warn('[MatchEngine] playIteration error (skipping tick):', e.message || e);
-    matchDetails._halfIteration = (matchDetails._halfIteration || 0) + 1;
-    return matchDetails;
+    pristine.iterationLog = [];
+    pristine._half = matchDetails._half || 1;
+    pristine._halfIteration = (matchDetails._halfIteration || 0) + 1;
+    bumpRevision(pristine);
+    // The event bus is a Map of closures and does not survive the JSON clone;
+    // re-attach the live bus so subscribers keep firing on the next tick.
+    pristine._eventBus = matchDetails._eventBus;
+    // Repair the pristine ball too — JSON round-trip may have stripped
+    // undefined properties that the engine validator requires.
+    _repairBall(pristine);
+    return pristine;
   }
 }
 
@@ -579,6 +697,12 @@ export async function startSecondHalf(matchDetails) {
   // (The engine uses writable:false + configurable:false for sent-off players.)
   _unfreezeAllPlayers(matchDetails);
 
+  // The engine's startSecondHalf unconditionally resets iterationLog to just
+  // ["Second Half Started: ..."]. That's exactly what we want here: the
+  // commentary tab accumulates events in its own ref, so first-half entries
+  // do NOT need to be re-injected — re-injecting them would re-parse the same
+  // log entries with fresh keys and stamp them all with the half-2 minute,
+  // producing duplicate "45'" events.
   const md = await Engine.startSecondHalf(matchDetails);
 
   // Restore sent-off markers — switchSide gave sent-off players real
@@ -588,6 +712,7 @@ export async function startSecondHalf(matchDetails) {
 
   md._half = 2;
   md._halfIteration = 0;
+  bumpRevision(md);
   return md;
 }
 
@@ -703,6 +828,43 @@ function _getTeamKey(matchDetails, side) {
     return kickIsHome ? 'kickOffTeam' : 'secondTeam';
   }
   return kickIsHome ? 'secondTeam' : 'kickOffTeam';
+}
+
+/**
+ * Simple in-place substitution by engine team key (legacy API).
+ * Unlike applySubstitutionV2, this directly swaps players in a team array
+ * without position familiarity checks or window tracking.
+ *
+ * @param {object} matchDetails
+ * @param {'kickOffTeam'|'secondTeam'} teamKey
+ * @param {string} playerOutID
+ * @param {object} playerIn — squad player object
+ * @returns {object} updated matchDetails
+ */
+export function applySubstitution(matchDetails, teamKey, playerOutID, playerIn) {
+  if (!matchDetails || !teamKey || !playerOutID || !playerIn) return matchDetails;
+  const team = matchDetails[teamKey];
+  if (!team?.players) return matchDetails;
+  // Match by engine playerID first; fall back to squadID because the engine's
+  // setGameVariables overwrites playerID with a random number, so callers that
+  // only have the squad ID must be able to locate the outgoing player.
+  const outIdx = team.players.findIndex((p) => p.playerID === playerOutID || p.squadID === playerOutID);
+  if (outIdx === -1) return matchDetails;
+  const outPlayer = team.players[outIdx];
+  if (Array.isArray(outPlayer.currentPOS) && outPlayer.currentPOS[0] === 'NP') return matchDetails;
+  const subPlayer = buildPlayerJson(playerIn, outPlayer.originPOS || outPlayer.currentPOS);
+  // Keep the outgoing player's originPOS so engine pathfinding knows the formation slot.
+  // Do NOT copy the outgoing player's currentPOS — it may have drifted near or past
+  // the pitch boundary (e.g. x = -2), and the validator on the next tick would throw
+  // "not on the pitch", resetting the entire tick and undoing the sub.
+  // Instead, place the substitute at the formation originPOS and reset intentPOS.
+  subPlayer.intentPOS = [...subPlayer.originPOS];
+  team.players[outIdx] = subPlayer;
+  if (matchDetails.iterationLog) {
+    matchDetails.iterationLog.push(`SUB: ${playerIn.name || playerIn.id} replaces ${outPlayer.name || playerOutID}`);
+  }
+  bumpRevision(matchDetails);
+  return matchDetails;
 }
 
 /**
@@ -1215,6 +1377,7 @@ export function applyFormationChange(matchDetails, side, newFormation, pitchSize
     );
   }
 
+  bumpRevision(matchDetails);
   return matchDetails;
 }
 
@@ -1243,7 +1406,7 @@ export function isMatchFinished(matchDetails) {
  * @returns {{ homeGoals: number, awayGoals: number, winner: string,
  *   homeShots: number, awayShots: number, possession: [number, number] }}
  */
-export function getMatchSummary(matchDetails) {
+export const getMatchSummary = memoizeByRevision(function getMatchSummary(matchDetails) {
   if (!matchDetails) return null;
 
   // The engine stores stats under team statistics objects.
@@ -1280,12 +1443,12 @@ export function getMatchSummary(matchDetails) {
     winner,
     homeShots,
     awayShots,
-    homeTeamName: matchDetails._homeTeamName || kickOff?.name || 'Home',
-    awayTeamName: matchDetails._awayTeamName || second?.name || 'Away',
+    homeTeamName: matchDetails._homeTeamName || kickOff?.name || '主队',
+    awayTeamName: matchDetails._awayTeamName || second?.name || '客队',
     half: matchDetails._half || 1,
     finished: matchDetails._finished || false,
   };
-}
+});
 
 /**
  * Collect per-player stats from the match details.
@@ -1294,7 +1457,7 @@ export function getMatchSummary(matchDetails) {
  *
  * @returns {object} { [playerID]: { goals, shots, passes, tackles, cards, saves, … } }
  */
-export function getPlayerStats(matchDetails) {
+export const getPlayerStats = memoizeByRevision(function getPlayerStats(matchDetails) {
   if (!matchDetails) return {};
 
   const stats = {};
@@ -1319,7 +1482,7 @@ export function getPlayerStats(matchDetails) {
   }
 
   return stats;
-}
+});
 
 /**
  * Build a unified events array from the iteration log.
@@ -1333,10 +1496,10 @@ export function getPlayerStats(matchDetails) {
  *
  * @returns {Array<{ type: string, text: string, half: number, halfIter: number, iter: number }>}
  */
+
 export function parseIterationEvents(matchDetails) {
   if (!matchDetails?.iterationLog) return [];
 
-  // Use tracked per-half counts stored alongside the matchDetails
   const half = matchDetails._half || 1;
   const halfIter = matchDetails._halfIteration || 1;
   const log = matchDetails.iterationLog;
@@ -1345,51 +1508,90 @@ export function parseIterationEvents(matchDetails) {
 
   const events = [];
 
-  // The latest log entry (index total-1) belongs to this tick's half & halfIter.
-  // We can't precisely assign every historical entry, but the engine appends
-  // exactly one entry per tick, so we assign the most recent entry to the
-  // current tick and let older entries keep their previously-computed halfIter.
-  // For a fresh match, this builds up correctly tick by tick.
+  // Snapshot matchDetails data that _translateCommentary depends on so
+  // translations are stable across ticks. The engine mutates team rosters
+  // during play (substitutions, red cards, etc.) — without a snapshot,
+  // _resolveTeam can return a different teamTag for the same old entry,
+  // causing React to update the DOM on a stable key → perceived as flicker.
+  //
+  // CRITICAL: Must deep-copy the players arrays. A shallow reference copy
+  // (e.g. { kickOffTeam: matchDetails.kickOffTeam }) still points at the
+  // same mutable objects — engine substitutions mutate them in-place,
+  // leaking through the "snapshot" and changing old entry translations.
+  const _translateSnapshot = {
+    kickOffTeam: matchDetails.kickOffTeam ? {
+      ...matchDetails.kickOffTeam,
+      players: (matchDetails.kickOffTeam.players || []).map(p => ({ ...p })),
+    } : null,
+    secondTeam: matchDetails.secondTeam ? {
+      ...matchDetails.secondTeam,
+      players: (matchDetails.secondTeam.players || []).map(p => ({ ...p })),
+    } : null,
+    _homeTeamName: matchDetails._homeTeamName,
+  };
 
-  // Build events: walk the log paired with half info.
-  // Since we track half transitions, we rebuild the full events list each tick
-  // by using a sliding estimate: entries up to a saved firstHalfCount marker.
-  if (!matchDetails._firstHalfEventCount) {
-    matchDetails._firstHalfEventCount = total;
+  // Rate-limit info-type events: at most 1 info event per 15 ticks.
+  // Info events (ball position updates, closest-player, passes, etc.) flood the
+  // commentary in burst mode (4-15 engine iterations per tick). Non-info events
+  // (goals, saves, tackles, fouls, cards, offside, shots, corners, injuries,
+  // subs) always pass through.
+  const INFO_WINDOW = 15;
+  _infoTickCounter++;
+  if (_infoTickCounter >= INFO_WINDOW) {
+    _infoTickCounter = 0;
+    _infoAllowed = true;
   }
 
-  const firstHalfSplit = matchDetails._firstHalfEventCount;
-  let hi = 0;
-
   for (let i = 0; i < total; i++) {
-    const text = log[i];
-    const eventHalf = i < firstHalfSplit ? 1 : 2;
-    const eventHalfIter = i < firstHalfSplit ? i : i - firstHalfSplit;
+    const rawText = log[i];
+    const translatedText = _translateCommentary(rawText, _translateSnapshot);
+    // Skip boilerplate entries (templates return '' for suppressed content)
+    if (translatedText === '') continue;
+    // runIteration() clears iterationLog before each engine tick, so every
+    // entry in this slice was produced during the CURRENT half at the CURRENT
+    // halfIter. Tag every event with `half` directly. (The old approach split
+    // the log at a frozen _firstHalfEventCount, which mis-classified
+    // second-half events with index < frozen count as half-1, dropping their
+    // +45' minute offset and printing e.g. "18'" at 62' match time.)
+    const eventHalf = half;
+    const estimatedIter = halfIter;
+    const type = _classifyEvent(rawText);
+    // Rate-limit info events: at most 1 per INFO_WINDOW ticks
+    if (type === 'info') {
+      if (!_infoAllowed) continue;
+      _infoAllowed = false;
+    }
     events.push({
-      text,
+      text: translatedText,
+      rawText,
       half: eventHalf,
-      halfIter: eventHalfIter,
+      halfIter: estimatedIter,  // estimated engine iteration for minute display
+      _logIndex: i,             // log index within this tick's slice
       iter: i,
-      type: _classifyEvent(text),
+      key: _nextEventKey(),     // globally unique, never repeats across ticks
+      type,
     });
   }
 
   return events;
 }
 
+let _eventKeyCounter = 0;
+
+function _nextEventKey() {
+  return 'e' + (++_eventKeyCounter);
+}
+
+// Info-event throttle: at most 1 info event per INFO_WINDOW ticks (15).
+// _infoTickCounter increments on every parseIterationEvents() call;
+// when it reaches INFO_WINDOW, we reset and grant one info slot.
+let _infoTickCounter = 0;
+let _infoAllowed = true;
+
 function _classifyEvent(text) {
-  const t = text.toLowerCase();
-  if (t.includes('goal') || t.includes('scored')) return 'goal';
-  if (t.includes('save')) return 'save';
-  if (t.includes('tackle')) return 'tackle';
-  if (t.includes('foul') || t.includes('yellow') || t.includes('red')) return 'foul';
-  if (t.includes('offside')) return 'offside';
-  if (t.includes('corner')) return 'corner';
-  if (t.includes('pass')) return 'pass';
-  if (t.includes('shot')) return 'shot';
-  if (t.includes('cross')) return 'cross';
-  if (t.includes('injur')) return 'injury';
-  return 'info';
+  // Delegates to the single structured parser (Design Pattern #1).
+  // `coarse` reproduces the legacy classification exactly (see matchEvents.js).
+  return parseMatchEvent(text).coarse;
 }
 
 // ===========================================================================
@@ -1490,6 +1692,164 @@ export function trackMatchAction(matchDetails, playerID, eventType, detail = {},
   if (!side) return;
 
   recordMatchEvent(tracker, side, playerID, eventType, detail, iteration);
+}
+
+// ---------------------------------------------------------------------------
+// Auto-tracking: parse engine log entries into matchStats
+// ---------------------------------------------------------------------------
+
+/**
+ * Stats subscriber for the structured event pipeline (Design Pattern #1).
+ *
+ * Called from the event bus for every typed event emitted in runIteration.
+ * Consumes the typed event's `type` + `playerName`/`won` fields (produced by
+ * parseMatchEvent) and feeds the matchStats tracker.
+ *
+ * Legacy behaviour is preserved exactly:
+ *   - shots: only "Shot Made/Header Shot/Volley Shot by" lines count, with
+ *     onTarget always false (the on/off-target lines are separate events and
+ *     were never merged by the legacy parser).
+ *   - tackles: only "successful" (won=true) and "slide attempted" (won=false)
+ *     count; plain "tackle attempted"/"failed tackle" are ignored.
+ *   - fouls: only "Handball by" resolves a player name in the legacy code, so
+ *     only handballs increment foul stats.
+ *
+ * @param {object} tracker — matchDetails._statsTracker
+ * @param {object} matchDetails — live match state (for name→id + side lookup)
+ * @param {object} ev — typed event from parseMatchEvent
+ */
+function _trackStatsEvent(tracker, matchDetails, ev) {
+  if (!tracker || !ev) return;
+
+  const iter = matchDetails._halfIteration || 1;
+
+  // Determine which engine team maps to home/away
+  const kickIsHome = matchDetails.kickOffTeam?.name === matchDetails._homeTeamName;
+  const sides = {
+    [matchDetails.kickOffTeam?.name]: kickIsHome ? 'home' : 'away',
+    [matchDetails.secondTeam?.name]: kickIsHome ? 'away' : 'home',
+  };
+
+  // Resolve which side a message belongs to by scanning team names in the text.
+  function resolveSide(text) {
+    for (const [teamName, side] of Object.entries(sides)) {
+      if (teamName && text.includes(teamName)) return side;
+    }
+    return 'home';
+  }
+
+  const side = resolveSide(ev.rawText);
+  const playerID = ev.playerName ? _findPlayerIDByName(matchDetails, ev.playerName, side) : null;
+
+  switch (ev.type) {
+    // Shot events — "Shot Made/Header Shot/Volley Shot by" (legacy onTarget=false)
+    case 'shot':
+      if (playerID) recordMatchEvent(tracker, side, playerID, 'shoot', { onTarget: false }, iter);
+      _incTeamShotStat(matchDetails, side, false);
+      break;
+
+    // Goal events
+    case 'goal':
+      if (playerID) recordMatchEvent(tracker, side, playerID, 'goal', {}, iter);
+      break;
+
+    // Save events
+    case 'save':
+      if (playerID) recordMatchEvent(tracker, side, playerID, 'save', {}, iter);
+      break;
+
+    // Tackle events — successful only (legacy)
+    case 'tackle':
+      if (playerID) recordMatchEvent(tracker, side, playerID, 'tackle', { won: true }, iter);
+      break;
+    // Slide-tackle attempt — counted as a lost tackle (legacy)
+    case 'slide_tackle':
+      if (playerID) recordMatchEvent(tracker, side, playerID, 'tackle', { won: false }, iter);
+      break;
+
+    // Pass events — "ball passed by" and "through ball attempted" only
+    case 'pass':
+    case 'through_ball':
+      if (playerID) recordMatchEvent(tracker, side, playerID, 'pass', { completed: true }, iter);
+      break;
+
+    // Cross events
+    case 'cross':
+      if (playerID) recordMatchEvent(tracker, side, playerID, 'cross', { completed: true }, iter);
+      break;
+
+    // Foul events — legacy only tracks handball (the only branch where a
+    // player name resolved). "Foul against" is left untracked to match legacy.
+    case 'foul':
+      if (ev.rawText.toLowerCase().includes('handball by') && playerID) {
+        recordMatchEvent(tracker, side, playerID, 'foul', {}, iter);
+        _incTeamFoulStat(matchDetails, side);
+      }
+      break;
+
+    // Corner events
+    case 'corner':
+      _incTeamCornerStat(matchDetails, side);
+      break;
+
+    // Interception / possession events — "has the ball" only (legacy)
+    case 'interception':
+      if (playerID) recordMatchEvent(tracker, side, playerID, 'interception', {}, iter);
+      break;
+
+    default:
+      break;
+  }
+}
+
+/** Look up a playerID by (partial) name within a side's engine team. */
+function _findPlayerIDByName(matchDetails, name, side) {
+  if (!name || !matchDetails) return null;
+  const kickIsHome = matchDetails.kickOffTeam?.name === matchDetails._homeTeamName;
+  const team = side === 'home'
+    ? (kickIsHome ? matchDetails.kickOffTeam : matchDetails.secondTeam)
+    : (kickIsHome ? matchDetails.secondTeam : matchDetails.kickOffTeam);
+  if (!team?.players) return null;
+  const n = name.toLowerCase().trim();
+  let player = team.players.find((p) => p.name && p.name.toLowerCase().includes(n));
+  if (!player) player = team.players.find((p) => p.name && n.includes(p.name.toLowerCase()));
+  return player?.playerID || null;
+}
+
+/** Add shot to engine-heap team statistics. */
+function _incTeamShotStat(matchDetails, side, onTarget) {
+  const kickIsHome = matchDetails.kickOffTeam?.name === matchDetails._homeTeamName;
+  const statsKey = side === 'home'
+    ? (kickIsHome ? 'kickOffTeamStatistics' : 'secondTeamStatistics')
+    : (kickIsHome ? 'secondTeamStatistics' : 'kickOffTeamStatistics');
+  const ts = matchDetails[statsKey];
+  if (!ts) return;
+  if (!ts.shots) ts.shots = { total: 0, on: 0, off: 0 };
+  ts.shots.total = (ts.shots.total || 0) + 1;
+  if (onTarget) ts.shots.on = (ts.shots.on || 0) + 1;
+  else ts.shots.off = (ts.shots.off || 0) + 1;
+}
+
+/** Add foul to engine-heap team statistics. */
+function _incTeamFoulStat(matchDetails, side) {
+  const kickIsHome = matchDetails.kickOffTeam?.name === matchDetails._homeTeamName;
+  const statsKey = side === 'home'
+    ? (kickIsHome ? 'kickOffTeamStatistics' : 'secondTeamStatistics')
+    : (kickIsHome ? 'secondTeamStatistics' : 'kickOffTeamStatistics');
+  const ts = matchDetails[statsKey];
+  if (!ts) return;
+  ts.fouls = (ts.fouls || 0) + 1;
+}
+
+/** Add corner to engine-heap team statistics. */
+function _incTeamCornerStat(matchDetails, side) {
+  const kickIsHome = matchDetails.kickOffTeam?.name === matchDetails._homeTeamName;
+  const statsKey = side === 'home'
+    ? (kickIsHome ? 'kickOffTeamStatistics' : 'secondTeamStatistics')
+    : (kickIsHome ? 'secondTeamStatistics' : 'kickOffTeamStatistics');
+  const ts = matchDetails[statsKey];
+  if (!ts) return;
+  ts.corners = (ts.corners || 0) + 1;
 }
 
 // Export stats tracker helpers for use by other modules
