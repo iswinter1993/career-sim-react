@@ -28,8 +28,9 @@ import { TICK_BURST } from '../gameConfig';
 import { buildTeamSquad, buildOpponentSquad } from '../squadGen';
 import PitchCanvas from './PitchCanvas';
 import { PreMatchTactics, SubstitutionPanel } from './TacticsPanel';
-import { rateAllPlayers } from '../playerRating';
+import { rateAllPlayers, getRatingLabel } from '../playerRating';
 import { mapGrowthToSubAttrs } from '../attributeMapping';
+import { POSITION_LABELS } from '../engine/lib/positionGroup';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -771,52 +772,100 @@ const MatchResultPanel = React.memo(function MatchResultPanel({ matchState, onCo
     ? MatchEngine.buildMatchReport(matchState.matchDetails)
     : null;
 
+  // Result tone — from the human player's side (human always plays as `home`).
+  const winner = result?.winner;
+  const tone = winner === 'home' ? 'win' : winner === 'away' ? 'loss' : 'draw';
+  const toneLabel = winner === 'home' ? '胜利' : winner === 'away' ? '失利' : '平局';
+
+  const ts = matchReport?.teamStats;
+  const homePoss = ts?.home?.possession ?? 50;
+  const awayPoss = ts?.away?.possession ?? 50;
+  const homeShots = ts?.home?.shots ?? 0;
+  const awayShots = ts?.away?.shots ?? 0;
+  const homeOn = ts?.home?.shotsOnTarget ?? 0;
+  const awayOn = ts?.away?.shotsOnTarget ?? 0;
+  const homeCorners = ts?.home?.corners ?? 0;
+  const awayCorners = ts?.away?.corners ?? 0;
+
   return (
     <div className="match-result-panel">
-      <div className="match-result-header">
-        <h2>比赛结束</h2>
-        <div className="match-result-score">
-          <span className="match-result-team">
-            <span className="match-result-fm">{homeFormation}</span>
-            <span>{homeName}</span>
-          </span>
-          <span className="match-result-score-num">{result?.homeGoals ?? 0} - {result?.awayGoals ?? 0}</span>
-          <span className="match-result-team">
-            <span>{awayName}</span>
-            <span className="match-result-fm">{awayFormation}</span>
-          </span>
-        </div>
-        {mvp && <div className="match-mvp">⭐ 最佳球员: {mvp.name} ({fmtRating(mvp.rating)})</div>}
-
-        {/* Possession / Shots bar */}
-        {matchReport && (
-          <div className="match-result-summary-bars">
-            <div className="match-result-bar-row">
-              <span className="match-result-bar-val">{matchReport.teamStats?.home?.possession ?? 50}%</span>
-              <div className="match-result-bar-track">
-                <div className="match-result-bar-fill home" style={{ width: `${matchReport.teamStats?.home?.possession ?? 50}%` }} />
-              </div>
-              <span className="match-result-bar-val">{matchReport.teamStats?.away?.possession ?? 50}%</span>
-              <span className="match-result-bar-label">控球率</span>
-            </div>
+      {/* Score banner — left accent stripe tinted by the result */}
+      <div className={`match-result-banner tone-${tone}`}>
+        <div className="match-result-banner-teams">
+          <div className="match-result-banner-team">
+            <span className="match-result-banner-name">{homeName}</span>
+            <span className="match-result-banner-fm">{homeFormation}</span>
           </div>
-        )}
+          <div className="match-result-banner-score">
+            <span className="match-result-banner-score-num">{result?.homeGoals ?? 0}</span>
+            <span className="match-result-banner-colon">:</span>
+            <span className="match-result-banner-score-num">{result?.awayGoals ?? 0}</span>
+          </div>
+          <div className="match-result-banner-team">
+            <span className="match-result-banner-name">{awayName}</span>
+            <span className="match-result-banner-fm">{awayFormation}</span>
+          </div>
+        </div>
+        <div className="match-result-banner-tag">{toneLabel}</div>
       </div>
 
+      {mvp && (
+        <div className="match-mvp">
+          <span className="match-mvp-star">⭐</span>
+          <span className="match-mvp-label">全场最佳</span>
+          <span className="match-mvp-name">{mvp.name}</span>
+          <span className="match-mvp-rating">{fmtRating(mvp.rating)}</span>
+        </div>
+      )}
+
+      {/* Stat strip — possession / shots / corners */}
+      {matchReport && (
+        <div className="match-result-stats">
+          <div className="match-result-stat-possession">
+            <div className="match-result-stat-head">
+              <span className="match-result-stat-val">{homePoss}%</span>
+              <span className="match-result-stat-title">控球率</span>
+              <span className="match-result-stat-val">{awayPoss}%</span>
+            </div>
+            <div className="match-result-bar-track">
+              <div className="match-result-bar-fill home" style={{ width: `${homePoss}%` }} />
+            </div>
+          </div>
+          <div className="match-result-stat-row">
+            <span className="match-result-stat-val">{homeShots}<span className="match-result-stat-sub">（{homeOn}）</span></span>
+            <span className="match-result-stat-title">射门（射正）</span>
+            <span className="match-result-stat-val">{awayShots}<span className="match-result-stat-sub">（{awayOn}）</span></span>
+          </div>
+          <div className="match-result-stat-row">
+            <span className="match-result-stat-val">{homeCorners}</span>
+            <span className="match-result-stat-title">角球</span>
+            <span className="match-result-stat-val">{awayCorners}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Player ratings — position chip + rating bar */}
       {ratings && (
         <div className="match-ratings">
           {['home', 'away'].map((side) => (
             <div key={side} className="match-ratings-col">
-              <h3>{side === 'home' ? homeName : awayName} — {side === 'home' ? homeFormation : awayFormation}</h3>
-              {(ratings[side] || []).map((r) => (
-                <div key={r.playerID} className={`match-rating-row ${r.playerID === 'player_self' ? 'is-player' : ''}`}>
-                  <span className="match-rating-name">{r.name}</span>
-                  <span className="match-rating-bar-track">
-                    <span className="match-rating-bar-fill" style={{ width: `${r.rating * 10}%`, background: r.color || '#95a5a6' }} />
-                  </span>
-                  <span className="match-rating-val" style={{ color: r.color }}>{fmtRating(r.rating)}</span>
-                </div>
-              ))}
+              <h3>
+                {side === 'home' ? homeName : awayName}
+                <span className="match-ratings-fm">{side === 'home' ? homeFormation : awayFormation}</span>
+              </h3>
+              {(ratings[side] || []).map((r) => {
+                const color = getRatingLabel(r.rating).color;
+                return (
+                  <div key={r.playerID} className={`match-rating-row ${r.playerID === 'player_self' ? 'is-player' : ''}`}>
+                    <span className="match-rating-pos">{POSITION_LABELS[r.position] || r.position || '—'}</span>
+                    <span className="match-rating-name">{r.name}</span>
+                    <span className="match-rating-bar-track">
+                      <span className="match-rating-bar-fill" style={{ width: `${r.rating * 10}%`, background: color }} />
+                    </span>
+                    <span className="match-rating-val" style={{ color }}>{fmtRating(r.rating)}</span>
+                  </div>
+                );
+              })}
             </div>
           ))}
         </div>
