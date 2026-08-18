@@ -1,3 +1,5 @@
+// [DEPRECATED] 已弃用 — 比赛会话逻辑改由 vendor RealTimeEngine 直接驱动。
+// 本文件保留仅作历史参考，无任何活代码引用（仅被已弃用的 MatchView.jsx 引用）。
 // matchSession.js — Design Pattern #6: EngineSession
 //
 // Wraps the stateless engine API (createMatch / runIteration / startSecondHalf

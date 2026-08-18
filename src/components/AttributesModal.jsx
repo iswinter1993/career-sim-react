@@ -1,110 +1,62 @@
 import React from 'react';
 import { useGame } from '../GameContext';
 import SIM from '../simEngine';
-import * as ATTRS from '../attributes';
-
-const { SUB_ATTRS, CATEGORIES, CAT_LABELS, getKeysByCategory } = ATTRS;
+import {
+  PLAYER_ATTRS,
+  CAT_LABELS,
+  getKeysByCategory,
+  getRatingComponents,
+  RATING_COMPONENTS,
+} from '../attributes';
 
 const CAT_COLORS = {
-  tech:   { bar: '#27ae60', bg: 'rgba(39,174,96,.16)', accent: 'rgba(39,174,96,.08)' },
-  phys:   { bar: '#e67e22', bg: 'rgba(230,126,34,.16)', accent: 'rgba(230,126,34,.08)' },
-  mental: { bar: '#3498db', bg: 'rgba(52,152,219,.16)', accent: 'rgba(52,152,219,.08)' },
+  mental:       { bar: '#3498db', bg: 'rgba(52,152,219,.16)' },
+  physical:     { bar: '#e67e22', bg: 'rgba(230,126,34,.16)' },
+  technical:    { bar: '#27ae60', bg: 'rgba(39,174,96,.16)' },
+  goalkeeping:  { bar: '#9b59b6', bg: 'rgba(155,89,182,.16)' },
 };
 
 // ---------------------------------------------------------------------------
-// Hexagonal radar — 6 technical attributes
+// N-axis radar — vendor 的 6 分量 rating() 可视化（0-100）
 // ---------------------------------------------------------------------------
 
-function hexVertices(cx, cy, r) {
-  const pts = [];
-  for (let i = 0; i < 6; i++) {
-    const a = Math.PI / 2 + (Math.PI * 2 * i) / 6;
-    pts.push({ x: cx + r * Math.cos(a), y: cy - r * Math.sin(a) });
-  }
-  return pts;
-}
+function Radar({ axes, values, max = 100 }) {
+  const SIZE = 220, CX = SIZE / 2, CY = SIZE / 2, MAX_R = 82;
+  const n = axes.length;
 
-function HexRadar({ attrs }) {
-  const techKeys = getKeysByCategory('tech');
-  const labels = techKeys.map((k) => SUB_ATTRS[k].label);
-  const SIZE = 220, CX = SIZE / 2, CY = SIZE / 2, MAX_R = 80;
-  const verts = hexVertices(CX, CY, MAX_R);
+  const verts = axes.map((_, i) => {
+    const a = -Math.PI / 2 + (Math.PI * 2 * i) / n;
+    return { x: CX + MAX_R * Math.cos(a), y: CY + MAX_R * Math.sin(a) };
+  });
 
   const dataPts = verts.map((v, i) => {
-    const val = Math.max(0, Math.min(100, attrs?.[techKeys[i]] ?? 0));
-    const r = val / 100;
+    const val = Math.max(0, Math.min(max, values?.[axes[i].key] ?? 0));
+    const r = val / max;
     return { x: CX + (v.x - CX) * r, y: CY + (v.y - CY) * r };
   });
   const dLine = dataPts.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ') + ' Z';
 
   return (
-    <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="radar-svg" aria-label="技术六维雷达图">
-      {[20, 40, 60, 80, 100].map((r) => {
-        const rv = verts.map((v) => ({ x: CX + (v.x - CX) * r / 100, y: CY + (v.y - CY) * r / 100 }));
+    <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="radar-svg" aria-label="综合能力六维雷达图">
+      {[0.2, 0.4, 0.6, 0.8, 1].map((fr) => {
+        const rv = verts.map((v) => ({ x: CX + (v.x - CX) * fr, y: CY + (v.y - CY) * fr }));
         const d = rv.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ') + ' Z';
-        return <path key={r} d={d} fill="none" stroke="hsl(var(--border))" strokeWidth="0.7" />;
-      })}
-      {verts.map((v, i) => (
-        <line key={`s-${i}`} x1={CX} y1={CY} x2={v.x} y2={v.y} stroke="hsl(var(--border))" strokeWidth="0.5" />
-      ))}
-      <path d={dLine} fill="#27ae60" fillOpacity="0.18" stroke="#27ae60" strokeWidth="2" strokeLinejoin="round" />
-      {dataPts.map((p, i) => (
-        <circle key={`d-${i}`} cx={p.x} cy={p.y} r="3" fill="#27ae60" stroke="#111" strokeWidth="0.8" />
-      ))}
-      {verts.map((v, i) => {
-        const lx = CX + (v.x - CX) * 1.2, ly = CY + (v.y - CY) * 1.2;
-        const a = lx < CX - 30 ? 'end' : lx > CX + 30 ? 'start' : 'middle';
-        return (
-          <text key={`t-${i}`} x={lx} y={ly} textAnchor={a} dominantBaseline="middle"
-            fill="hsl(var(--muted))" fontSize="10.5" fontWeight="600" style={{ fontFamily: 'inherit' }}>
-            {labels[i]}
-          </text>
-        );
-      })}
-    </svg>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Triangular radar — 3 category averages
-// ---------------------------------------------------------------------------
-
-function TriRadar({ attrs }) {
-  const avgs = CATEGORIES.map((cat) => {
-    const keys = getKeysByCategory(cat);
-    return Math.round(keys.reduce((s, k) => s + (attrs?.[k] ?? 0), 0) / (keys.length || 1) * 10) / 10;
-  });
-  const SIZE = 200, CX = SIZE / 2, CY = SIZE / 2 + 4, MAX_R = 74;
-  const angles = [-Math.PI / 2, Math.PI / 6, 5 * Math.PI / 6];
-  const verts = angles.map((a) => ({ x: CX + MAX_R * Math.cos(a), y: CY - MAX_R * Math.sin(a) }));
-
-  const dataPts = verts.map((v, i) => {
-    const r = Math.max(0, Math.min(100, avgs[i])) / 100;
-    return { x: CX + (v.x - CX) * r, y: CY + (v.y - CY) * r };
-  });
-  const dLine = dataPts.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ') + ' Z';
-
-  return (
-    <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="radar-svg" aria-label="能力三角雷达图">
-      {[20, 40, 60, 80, 100].map((r) => {
-        const rv = verts.map((v) => ({ x: CX + (v.x - CX) * r / 100, y: CY + (v.y - CY) * r / 100 }));
-        const d = rv.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ') + ' Z';
-        return <path key={r} d={d} fill="none" stroke="hsl(var(--border))" strokeWidth="0.7" />;
+        return <path key={fr} d={d} fill="none" stroke="hsl(var(--border))" strokeWidth="0.7" />;
       })}
       {verts.map((v, i) => (
         <line key={`s-${i}`} x1={CX} y1={CY} x2={v.x} y2={v.y} stroke="hsl(var(--border))" strokeWidth="0.5" />
       ))}
       <path d={dLine} fill="#f0c040" fillOpacity="0.16" stroke="#f0c040" strokeWidth="2" strokeLinejoin="round" />
       {dataPts.map((p, i) => (
-        <circle key={`d-${i}`} cx={p.x} cy={p.y} r="3.5" fill="#f0c040" stroke="#111" strokeWidth="0.8" />
+        <circle key={`d-${i}`} cx={p.x} cy={p.y} r="3" fill="#f0c040" stroke="#111" strokeWidth="0.8" />
       ))}
       {verts.map((v, i) => {
-        const lx = CX + (v.x - CX) * 1.24, ly = CY + (v.y - CY) * 1.24;
-        const a = i === 0 ? 'middle' : i === 1 ? 'start' : 'end';
+        const lx = CX + (v.x - CX) * 1.22, ly = CY + (v.y - CY) * 1.22;
+        const a = Math.abs(lx - CX) < 30 ? 'middle' : (lx < CX ? 'end' : 'start');
         return (
           <text key={`t-${i}`} x={lx} y={ly} textAnchor={a} dominantBaseline="middle"
-            fill="hsl(var(--muted))" fontSize="10.5" fontWeight="600" style={{ fontFamily: 'inherit' }}>
-            {CAT_LABELS[CATEGORIES[i]]}
+            fill="hsl(var(--muted))" fontSize="10" fontWeight="600" style={{ fontFamily: 'inherit' }}>
+            {axes[i].label}
           </text>
         );
       })}
@@ -117,8 +69,8 @@ function TriRadar({ attrs }) {
 // ---------------------------------------------------------------------------
 
 function AttrCard({ label, value, color }) {
-  const pct = Math.round((value / 100) * 100);
-  const c = value >= 70 ? '#f0c040' : color;
+  const pct = Math.round((value / 20) * 100);
+  const c = value >= 14 ? '#f0c040' : color;
   return (
     <div className="acard">
       <div className="acard-top">
@@ -133,24 +85,25 @@ function AttrCard({ label, value, color }) {
 }
 
 // ---------------------------------------------------------------------------
-// Category block — label at top, cards stacked below
+// Category block — label + category average at top, cards below
 // ---------------------------------------------------------------------------
 
 function CategoryBlock({ cat, attrs }) {
-  const entries = Object.entries(SUB_ATTRS).filter(([, v]) => v.cat === cat);
-  const catVal = SIM.getCategory(attrs, cat);
-  const c = CAT_COLORS[cat] || CAT_COLORS.tech;
+  const keys = getKeysByCategory(cat);
+  const c = CAT_COLORS[cat] || CAT_COLORS.technical;
+  const sum = keys.reduce((s, k) => s + (attrs?.[k] ?? 0), 0);
+  const avg = keys.length ? Math.round(sum / keys.length) : 0;
 
   return (
     <div className={`cat-block cat-block--${cat}`}>
       <div className="cat-block-head">
         <span className="cat-block-icon" style={{ background: c.bar }} />
         <span className="cat-block-name">{CAT_LABELS[cat]}</span>
-        <span className="cat-block-score">{catVal}</span>
+        <span className="cat-block-score" style={{ color: c.bar }}>{avg}</span>
       </div>
       <div className="cat-block-cards">
-        {entries.map(([key, def]) => (
-          <AttrCard key={key} label={def.label} value={attrs?.[key] ?? 0} color={c.bar} />
+        {keys.map((key) => (
+          <AttrCard key={key} label={PLAYER_ATTRS[key].label} value={attrs?.[key] ?? 0} color={c.bar} />
         ))}
       </div>
     </div>
@@ -167,9 +120,15 @@ export default function AttributesModal({ onClose }) {
   const simState = state.simState;
   if (!attrs) return null;
 
-  const attrOvr = SIM.getOVRFromAttributes(attrs, simState?.pos || attrs._pos);
+  const pos = simState?.pos || attrs._pos || 'CM';
+  const isGK = pos === 'GK';
+  const attrOvr = SIM.getOVRFromAttributes(attrs, pos);
   const engineOvr = Math.round(simState?.ovr || 0);
-  const pos = simState?.pos || attrs._pos;
+  const rating = getRatingComponents(attrs, pos);
+  const axes = RATING_COMPONENTS[isGK ? 'gk' : 'outfield'];
+  const cats = isGK
+    ? ['mental', 'physical', 'technical', 'goalkeeping']
+    : ['mental', 'physical', 'technical'];
 
   return (
     <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -182,23 +141,17 @@ export default function AttributesModal({ onClose }) {
           <span className="am-pos">{pos}</span>
         </div>
 
-        {/* Body: left radars, right attrs */}
+        {/* Body: left radar, right attrs */}
         <div className="am-body">
-          {/* Left: radar charts */}
           <div className="am-left">
             <div className="am-radar-card">
-              <div className="am-radar-title">技术六维</div>
-              <HexRadar attrs={attrs} />
-            </div>
-            <div className="am-radar-card">
-              <div className="am-radar-title">能力三角</div>
-              <TriRadar attrs={attrs} />
+              <div className="am-radar-title">综合能力</div>
+              <Radar axes={axes} values={rating} />
             </div>
           </div>
 
-          {/* Right: three category blocks */}
           <div className="am-right">
-            {CATEGORIES.map((cat) => (
+            {cats.map((cat) => (
               <CategoryBlock key={cat} cat={cat} attrs={attrs} />
             ))}
           </div>

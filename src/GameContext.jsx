@@ -55,6 +55,9 @@ function gameReducer(state, action) {
     case 'START_IDENTITY':
       return { ...state, phase: PHASES.IDENTITY, step: 1 };
 
+    case 'OPEN_DEMO':
+      return { ...state, phase: PHASES.DEMO };
+
     case 'START_CAREER': {
       const seed = action.seed || String(Math.floor(Math.random() * 1000000000));
       const simState = SIM.newState(state.mode, state.identity, seed);

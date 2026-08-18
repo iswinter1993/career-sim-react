@@ -1,11 +1,10 @@
 import React, { useEffect, Component } from 'react';
 import { GameProvider, useGame } from './GameContext';
-import { MATCH } from './stateMachine';
 import IntroView from './components/IntroView';
 import IdentityView from './components/IdentityView';
 import CareerView from './components/CareerView';
-import MatchView from './components/MatchView';
 import SummaryView from './components/SummaryView';
+import SimulatorDemoView from './simulatorDemo/SimulatorDemoView';
 import HelpModal from './components/HelpModal';
 import NewsModal from './components/NewsModal';
 import ShareModal from './components/ShareModal';
@@ -53,21 +52,17 @@ class ErrorBoundary extends Component {
 }
 
 function GameShell() {
-  const { state, PHASES, matchPhase } = useGame();
+  const { state, PHASES } = useGame();
   const { phase } = state;
 
   useEffect(() => {
+    // 比赛页已替换为 demo 页（vendor/football-simulator 引擎），
+    // MATCH 与 DEMO 两个 phase 都套用 in-demo 的浅色全宽布局并隐藏顶栏/页脚。
+    const isDemo = phase === PHASES.DEMO || phase === PHASES.MATCH;
     document.body.classList.toggle('no-actionbar', phase !== PHASES.IDENTITY);
     document.body.classList.toggle('in-career', phase === PHASES.CAREER);
-    document.body.classList.toggle('in-match', phase === PHASES.MATCH);
-    // Only the live broadcast view (playing/paused/finished) goes wide;
-    // pre-match tactics keeps the narrow single-column width.
-    document.body.classList.toggle(
-      'in-match-live',
-      phase === PHASES.MATCH &&
-        (matchPhase === MATCH.PLAYING || matchPhase === MATCH.PAUSED || matchPhase === MATCH.FINISHED)
-    );
-  }, [phase, matchPhase, PHASES]);
+    document.body.classList.toggle('in-demo', isDemo);
+  }, [phase, PHASES]);
 
   return (
     <>
@@ -76,7 +71,7 @@ function GameShell() {
         {phase === PHASES.INTRO && <IntroView />}
         {phase === PHASES.IDENTITY && <IdentityView />}
         {phase === PHASES.CAREER && <CareerView />}
-        {phase === PHASES.MATCH && <MatchView />}
+        {(phase === PHASES.MATCH || phase === PHASES.DEMO) && <SimulatorDemoView />}
         {phase === PHASES.SUMMARY && <SummaryView />}
       </main>
       <Footer />

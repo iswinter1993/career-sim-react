@@ -1,0 +1,1500 @@
+/* simulatorDemo.css — 从 football-simulator/demo/src/styles.css 完整移植。
+ *
+ * 全部选择器都收在 .sim-demo 作用域内，避免与 App 的暗色主题样式冲突。
+ * 进入 demo 时 body 会被加上 .in-demo（见 App.jsx），隐藏顶栏/页脚并复位背景。
+ */
+
+/* ------------------------------------------------------------------ */
+/* 进入 demo 页面时的全局覆盖                                        */
+/* ------------------------------------------------------------------ */
+
+body.in-demo {
+  background: hsl(150 7% 6%);
+  color: hsl(84 10% 93%);
+  padding-bottom: 0;
+}
+
+body.in-demo #app {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+body.in-demo .topbar,
+body.in-demo .footer {
+  display: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* demo 容器与主题变量                                                */
+/* ------------------------------------------------------------------ */
+
+.sim-demo {
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans-serif: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "HarmonyOS Sans SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --font-size-body: 1.05rem;
+  --font-size-headline: 1.7rem;
+  --font-size-small: 0.78rem;
+
+  /* 与 App 暗色墨绿主题（style.css）对齐的语义色 */
+  --bg: 150 7% 6%;
+  --card: 140 7% 9%;
+  --row: 135 7% 11%;
+  --row-hi: 130 6% 15%;
+  --border: 129 6% 21%;
+  --border-strong: 127 6% 27%;
+  --text: 84 10% 93%;
+  --muted: 128 5% 63%;
+  --faint: 127 3% 53%;
+  --accent: 136 39% 51%;
+  --accent-on: 130 30% 8%;
+  --gold: 40 66% 55%;
+  --gold-2: 32 62% 44%;
+  --failure: 8 62% 58%;
+  --info: 202 45% 60%;
+
+  /* 兼容旧变量名（既有选择器仍引用它们，映射到暗色主题） */
+  --brand-color: hsl(var(--accent));
+  --brand-secondary-color: hsl(var(--row));
+  --brand-alternate-color: hsl(var(--row));
+  --background: hsl(var(--bg));
+  --text-color: hsl(var(--text));
+  --border-color: hsl(var(--border));
+  --subtle-color: hsl(var(--muted));
+  --home-color: hsl(var(--info));
+  --away-color: hsl(var(--failure));
+  --gutter: 2rem;
+  --gutter-y: 2rem;
+
+  width: min(100%, 1440px);
+  min-width: 320px;
+  margin: 0 auto;
+  padding: 1rem 4vw 4rem;
+  background: var(--background);
+  color: var(--text-color);
+  font-family: var(--font-sans-serif);
+  font-size: var(--font-size-body);
+  line-height: 1.75;
+}
+
+.sim-demo *,
+.sim-demo *::before,
+.sim-demo *::after {
+  box-sizing: border-box;
+}
+
+.sim-demo button,
+.sim-demo select,
+.sim-demo input {
+  font: inherit;
+}
+
+.sim-demo button,
+.sim-demo select {
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  background: hsl(var(--row));
+  color: var(--text-color);
+}
+
+.sim-demo button {
+  cursor: pointer;
+}
+
+.sim-demo h1,
+.sim-demo h2,
+.sim-demo p,
+.sim-demo ul,
+.sim-demo ol,
+.sim-demo dl {
+  margin: 0;
+}
+
+.sim-demo table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+/* 返回按钮（demo 专属，非原版 demo） */
+.sim-demo .demo-toolbar {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: var(--gutter-y);
+}
+
+.sim-demo .demo-exit {
+  height: 2.5rem;
+  padding: 0 1rem;
+  background: var(--brand-color);
+  border-color: var(--brand-color);
+  border-radius: 7px;
+  color: hsl(var(--accent-on));
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  transition: filter 0.12s ease, box-shadow 0.12s ease;
+}
+
+.sim-demo .demo-exit:hover {
+  filter: brightness(1.08);
+  box-shadow: inset 0 0 0 1px hsl(var(--accent));
+}
+
+/* ------------------------------------------------------------------ */
+/* Scoreboard                                                          */
+/* ------------------------------------------------------------------ */
+
+.sim-demo .scoreboard {
+  width: min(600px, 100%);
+  margin: 0 auto var(--gutter-y);
+  font-family: var(--font-mono);
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  overflow: hidden;
+  background: hsl(var(--card));
+}
+
+.sim-demo .match-minute {
+  display: block;
+  width: 100%;
+  min-height: 2rem;
+  padding: 0.45rem 1rem;
+  border: 0;
+  border-bottom: 1px solid hsl(var(--border));
+  background: hsl(var(--row-hi));
+  color: hsl(var(--gold));
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+.sim-demo .scores {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1.25rem;
+  min-height: 5rem;
+  padding: calc(var(--gutter) / 2);
+  background: hsl(var(--card));
+  color: hsl(var(--gold));
+  font-size: var(--font-size-headline);
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.sim-demo .score-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: calc(var(--gutter) / 2);
+  border-top: 1px solid hsl(var(--border));
+  background: hsl(var(--row));
+}
+
+.sim-demo .score-sheet__item {
+  display: flex;
+  justify-content: space-between;
+  width: 50%;
+  gap: 1rem;
+}
+
+.sim-demo .score-sheet__item.away {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+/* ------------------------------------------------------------------ */
+/* Controls                                                            */
+/* ------------------------------------------------------------------ */
+
+.sim-demo .controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  width: min(760px, 100%);
+  margin: 0 auto var(--gutter-y);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  font-weight: 900;
+}
+
+.sim-demo .controls button,
+.sim-demo .controls select {
+  height: 2.25rem;
+  padding: 0 0.75rem;
+}
+
+.sim-demo .controls button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.sim-demo .controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-transform: uppercase;
+}
+
+.sim-demo .controls .seed {
+  color: var(--subtle-color);
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+}
+
+.sim-demo .timeline,
+.sim-demo .controls input {
+  flex: 1 0 100%;
+  width: 100%;
+}
+
+.sim-demo .timeline {
+  position: relative;
+  display: grid;
+  align-items: center;
+}
+
+.sim-demo .timeline input {
+  accent-color: var(--brand-color);
+}
+
+.sim-demo .goal-markers {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 100%;
+  pointer-events: none;
+}
+
+.sim-demo .goal-markers button {
+  position: absolute;
+  top: 50%;
+  width: 0.7rem;
+  height: 0.7rem;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--away-color);
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+}
+
+.sim-demo .goal-markers button.active {
+  background: hsl(var(--gold));
+  outline: 2px solid hsl(var(--accent));
+}
+
+/* ------------------------------------------------------------------ */
+/* Pitch                                                               */
+/* ------------------------------------------------------------------ */
+
+.sim-demo .pitch-shell {
+  width: min(960px, 100%);
+  margin: 0 auto calc(var(--gutter-y) * 1.6);
+}
+
+.sim-demo .pitch-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 1rem;
+  border: 1px solid hsl(var(--border));
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  background: hsl(var(--row-hi));
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  font-weight: 900;
+  color: hsl(var(--text));
+}
+
+.sim-demo .pitch {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 105 / 68;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      hsl(140 34% 12%) 0,
+      hsl(140 34% 12%) 9.5%,
+      hsl(140 36% 15%) 9.5%,
+      hsl(140 36% 15%) 19%
+    );
+  outline: 2px solid rgba(255, 255, 255, 0.58);
+  outline-offset: -12px;
+}
+
+.sim-demo .mark,
+.sim-demo .player,
+.sim-demo .target,
+.sim-demo .ball,
+.sim-demo .restart-zone,
+.sim-demo .pass-target,
+.sim-demo .second-ball-marker,
+.sim-demo .intent-layer {
+  position: absolute;
+}
+
+.sim-demo .mark {
+  pointer-events: none;
+}
+
+.sim-demo .mark--half {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.sim-demo .mark--circle {
+  top: 50%;
+  left: 50%;
+  width: 18%;
+  aspect-ratio: 1;
+  border: 2px solid rgba(255, 255, 255, 0.58);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.sim-demo .mark--home-box,
+.sim-demo .mark--away-box {
+  top: 22%;
+  width: 14%;
+  height: 56%;
+  border: 2px solid rgba(255, 255, 255, 0.58);
+}
+
+.sim-demo .mark--home-box {
+  left: 12px;
+  border-left: 0;
+}
+
+.sim-demo .mark--away-box {
+  right: 12px;
+  border-right: 0;
+}
+
+.sim-demo .target {
+  width: 0.45rem;
+  height: 0.45rem;
+  border: 1px solid #fff;
+  border-radius: 50%;
+  opacity: 0.4;
+  transform: translate(-50%, -50%);
+}
+
+.sim-demo .target.home {
+  background: var(--home-color);
+}
+
+.sim-demo .target.away {
+  background: var(--away-color);
+}
+
+.sim-demo .restart-zone {
+  z-index: 1;
+  width: 4rem;
+  aspect-ratio: 1;
+  border: 2px dashed rgba(255, 255, 255, 0.72);
+  border-radius: 50%;
+  background: hsl(var(--accent) / 0.16);
+  transform: translate(-50%, -50%);
+}
+
+.sim-demo .pass-target {
+  z-index: 2;
+  width: 1.15rem;
+  aspect-ratio: 1;
+  border: 2px solid #fff;
+  background: hsl(var(--gold) / 0.32);
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.sim-demo .second-ball-marker {
+  z-index: 2;
+  width: 1.45rem;
+  aspect-ratio: 1;
+  border: 2px dashed hsl(var(--accent));
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.18);
+  transform: translate(-50%, -50%);
+}
+
+.sim-demo .intent-layer {
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.sim-demo .intent-layer line {
+  stroke: rgba(255, 255, 255, 0.74);
+  stroke-width: 0.45;
+  stroke-dasharray: 1.4 1;
+}
+
+.sim-demo .player {
+  display: grid;
+  place-items: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  color: #000;
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  font-weight: 900;
+  line-height: 1;
+  transform: translate(-50%, -50%);
+  transition: left 90ms linear, top 90ms linear, transform 120ms ease;
+}
+
+.sim-demo .player.home {
+  background: var(--home-color);
+}
+
+.sim-demo .player.away {
+  background: var(--away-color);
+}
+
+.sim-demo .player.owner {
+  transform: translate(-50%, -50%) scale(1.18);
+  box-shadow: 0 0 0 0.35rem hsl(var(--accent) / 0.4);
+}
+
+.sim-demo .player.selected {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
+
+.sim-demo .ball {
+  z-index: 4;
+  width: 0.8rem;
+  height: 0.8rem;
+  border: 2px solid #000;
+  border-radius: 50%;
+  background: #fff;
+  transform: translate(-50%, -50%);
+  transition: left 90ms linear, top 90ms linear;
+}
+
+/* ------------------------------------------------------------------ */
+/* Events / Match report / Inspector / Story / Teams                   */
+/* ------------------------------------------------------------------ */
+
+.sim-demo .events {
+  width: min(760px, 100%);
+  margin: 0 auto calc(var(--gutter-y) * 2);
+  font-family: var(--font-mono);
+}
+
+.sim-demo .match-report {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(12rem, 0.7fr));
+  gap: 1.25rem;
+  width: min(960px, 100%);
+  margin: calc(var(--gutter-y) * -0.8) auto var(--gutter-y);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+}
+
+.sim-demo .match-report dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  grid-column: 1 / -1;
+}
+
+.sim-demo .match-report div {
+  padding: 0.75rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 7px;
+  background: hsl(var(--row));
+}
+
+.sim-demo .match-report dt,
+.sim-demo .match-report dd {
+  margin: 0;
+}
+
+.sim-demo .match-report dt {
+  color: var(--subtle-color);
+  text-transform: uppercase;
+}
+
+.sim-demo .match-report dd {
+  overflow: hidden;
+  font-size: 1.15rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sim-demo .match-report table {
+  border: 1px solid hsl(var(--border));
+  border-radius: 7px;
+  overflow: hidden;
+  background: hsl(var(--row));
+}
+
+.sim-demo .match-report th,
+.sim-demo .match-report td {
+  padding: 0.35rem 0.65rem;
+}
+
+.sim-demo .match-report th {
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.sim-demo .match-report td {
+  text-align: right;
+}
+
+.sim-demo .shot-map {
+  position: relative;
+  overflow: hidden;
+  min-height: 10rem;
+  aspect-ratio: 105 / 68;
+  background:
+    linear-gradient(90deg, transparent 49.5%, rgba(255, 255, 255, 0.55) 49.5%, rgba(255, 255, 255, 0.55) 50.5%, transparent 50.5%),
+    hsl(140 34% 12%);
+}
+
+.sim-demo .match-report .shot-map {
+  padding: 0;
+}
+
+.sim-demo .shot-map span {
+  position: absolute;
+  width: 0.65rem;
+  height: 0.65rem;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--away-color);
+  transform: translate(-50%, -50%);
+}
+
+.sim-demo .route-summary,
+.sim-demo .goal-context,
+.sim-demo .story-report {
+  width: min(960px, 100%);
+  margin: 0 auto var(--gutter-y);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+}
+
+.sim-demo .route-summary {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding: 0;
+  background: transparent;
+}
+
+.sim-demo .route-summary span,
+.sim-demo .goal-context div {
+  padding: 0.75rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 7px;
+  background: hsl(var(--row));
+  font-weight: 900;
+}
+
+.sim-demo .goal-context dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.sim-demo .goal-context dt,
+.sim-demo .goal-context dd {
+  margin: 0;
+}
+
+.sim-demo .goal-context dt {
+  color: var(--subtle-color);
+  text-transform: uppercase;
+}
+
+.sim-demo .story-report {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  background: hsl(var(--card));
+}
+
+.sim-demo .story-report h2,
+.sim-demo .story-report h3,
+.sim-demo .story-report p {
+  margin: 0;
+}
+
+.sim-demo .story-report h2 {
+  font-size: 1.4rem;
+}
+
+.sim-demo .story-report__sections {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.sim-demo .story-report article,
+.sim-demo .story-report li {
+  padding: 0.75rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 7px;
+  background: hsl(var(--row));
+}
+
+.sim-demo .story-report h3,
+.sim-demo .story-report strong,
+.sim-demo .story-report span {
+  text-transform: uppercase;
+}
+
+.sim-demo .story-report h3,
+.sim-demo .story-report strong {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.sim-demo .story-report span {
+  color: var(--subtle-color);
+}
+
+.sim-demo .story-report ol {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sim-demo .inspector {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr);
+  gap: 1rem;
+  width: min(960px, 100%);
+  margin: calc(var(--gutter-y) * -1) auto var(--gutter-y);
+  padding: 1rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  background: hsl(var(--card));
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+}
+
+.sim-demo .inspector strong,
+.sim-demo .inspector span {
+  display: block;
+}
+
+.sim-demo .inspector dl {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.sim-demo .inspector div,
+.sim-demo .inspector dl,
+.sim-demo .inspector dt,
+.sim-demo .inspector dd {
+  margin: 0;
+}
+
+.sim-demo .inspector dt {
+  color: var(--subtle-color);
+  text-transform: uppercase;
+}
+
+.sim-demo .inspector dd {
+  font-weight: 900;
+}
+
+.sim-demo .events h2 {
+  margin-bottom: 0.75rem;
+  font-size: var(--font-size-small);
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.sim-demo .events ol {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0;
+  list-style: none;
+}
+
+.sim-demo .events li {
+  display: grid;
+  grid-template-columns: 5rem 1fr;
+  gap: 1rem;
+  padding: 0.35rem 0;
+  border-top: 1px solid var(--border-color);
+  font-size: var(--font-size-small);
+}
+
+.sim-demo .events span {
+  color: var(--subtle-color);
+}
+
+.sim-demo .teams {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: min(12vw, 8rem);
+}
+
+.sim-demo .team {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.sim-demo .team h2 {
+  margin-bottom: var(--gutter-y);
+  font-size: var(--font-size-headline);
+  text-align: center;
+}
+
+.sim-demo .ratings {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  margin-bottom: var(--gutter-y);
+  padding: 0;
+  list-style: none;
+}
+
+.sim-demo .ratings li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.sim-demo .ratings li span {
+  font-family: var(--font-mono);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: hsl(var(--gold));
+}
+
+.sim-demo .ratings strong,
+.sim-demo .report th,
+.sim-demo .players th {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.sim-demo .report {
+  margin-bottom: var(--gutter-y);
+  border: 1px solid hsl(var(--border));
+  border-radius: 7px;
+  overflow: hidden;
+  background: hsl(var(--row));
+}
+
+.sim-demo .report th,
+.sim-demo .report td {
+  padding: 0.55rem 1rem;
+}
+
+.sim-demo .report th {
+  text-align: left;
+}
+
+.sim-demo .report td {
+  text-align: right;
+}
+
+.sim-demo .players th,
+.sim-demo .players td {
+  padding: 0.45rem 1rem;
+  text-align: left;
+}
+
+.sim-demo .players th:last-child,
+.sim-demo .players td:last-child {
+  text-align: right;
+}
+
+.sim-demo .players .players__group th {
+  padding-top: 1rem;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--subtle-color);
+  text-align: left;
+}
+
+.sim-demo .players td:first-child {
+  width: 1%;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ */
+/* 响应式                                                              */
+/* ------------------------------------------------------------------ */
+
+@media (max-width: 900px) {
+  .sim-demo {
+    padding: 1rem 1rem 2rem;
+  }
+
+  .sim-demo .teams {
+    grid-template-columns: 1fr;
+    gap: calc(var(--gutter-y) * 2);
+  }
+
+  .sim-demo .inspector {
+    grid-template-columns: 1fr;
+  }
+
+  .sim-demo .inspector dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sim-demo .match-report {
+    grid-template-columns: 1fr;
+  }
+
+  .sim-demo .match-report dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sim-demo .story-report__sections {
+    grid-template-columns: 1fr;
+  }
+
+  .sim-demo .score-sheet__item {
+    width: 100%;
+  }
+}
+
+@media (max-width: 560px) {
+  .sim-demo .scores {
+    min-height: 4rem;
+  }
+
+  .sim-demo .pitch-meta {
+    gap: 1rem;
+    font-size: 0.7rem;
+  }
+
+  .sim-demo .events li {
+    grid-template-columns: 4rem 1fr;
+  }
+
+  .sim-demo .players th,
+  .sim-demo .players td {
+    padding-right: 0.4rem;
+    padding-left: 0.4rem;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* 生涯比赛结果面板（评分 + 属性成长）                              */
+/* ------------------------------------------------------------------ */
+
+.sim-demo .career-result {
+  margin: var(--gutter-y) 0;
+  padding: 1rem 1.5rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  background: hsl(var(--card));
+}
+
+.sim-demo .career-result__head {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.sim-demo .career-result__head strong {
+  font-size: var(--font-size-small);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--subtle-color);
+}
+
+.sim-demo .career-result__rating {
+  font-family: var(--font-mono);
+  font-size: 2.2rem;
+  font-weight: 700;
+  line-height: 1;
+  color: hsl(var(--gold));
+}
+
+.sim-demo .career-result__growth {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sim-demo .career-result__growth li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--font-size-small);
+}
+
+.sim-demo .career-result__growth li span {
+  color: var(--text-color);
+}
+
+.sim-demo .career-result__growth li b {
+  font-family: var(--font-mono);
+  color: hsl(var(--accent));
+}
+
+.sim-demo .career-result__none {
+  margin: 0;
+  font-size: var(--font-size-small);
+  color: var(--subtle-color);
+}
+
+/* ------------------------------------------------------------------ */
+/* 比赛结束页（生涯 MATCH 模式整页结果）                              */
+/* ------------------------------------------------------------------ */
+
+.sim-demo .match-end {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 1.5rem 0 3rem;
+}
+
+.sim-demo .match-end__head {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.sim-demo .match-end__eyebrow {
+  display: block;
+  font-size: var(--font-size-small);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--subtle-color);
+  margin-bottom: 0.35rem;
+}
+
+.sim-demo .match-end__head h2 {
+  margin: 0;
+  font-size: 1.6rem;
+  color: var(--text-color);
+}
+
+.sim-demo .match-end__banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.5rem 1.25rem;
+  border-radius: 10px;
+  border: 1px solid hsl(var(--border));
+  border-left: 4px solid hsl(var(--border));
+  background: hsl(var(--card));
+}
+
+.sim-demo .match-end__banner.tone-win  { border-left-color: hsl(var(--accent)); }
+.sim-demo .match-end__banner.tone-loss { border-left-color: hsl(var(--failure)); }
+.sim-demo .match-end__banner.tone-draw { border-left-color: hsl(var(--gold)); }
+
+.sim-demo .match-end__team {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.sim-demo .match-end__team:last-child {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.sim-demo .match-end__name {
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.sim-demo .match-end__fm {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  color: var(--subtle-color);
+}
+
+.sim-demo .match-end__score {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 2.4rem;
+  font-weight: 700;
+  color: hsl(var(--gold));
+}
+
+.sim-demo .match-end__colon {
+  color: var(--subtle-color);
+}
+
+.sim-demo .match-end__tag {
+  margin-top: 0.6rem;
+  text-align: center;
+  font-size: var(--font-size-small);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--subtle-color);
+}
+
+.sim-demo .match-end__rating {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 1rem;
+  margin: 1.5rem 0 0.75rem;
+}
+
+.sim-demo .match-end__rating-label {
+  font-size: var(--font-size-small);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--subtle-color);
+}
+
+.sim-demo .match-end__rating-val {
+  font-family: var(--font-mono);
+  font-size: 2.6rem;
+  font-weight: 700;
+  line-height: 1;
+  color: hsl(var(--gold));
+}
+
+.sim-demo .match-end__growth {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem 1.25rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.sim-demo .match-end__growth li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--font-size-small);
+}
+
+.sim-demo .match-end__growth li b {
+  font-family: var(--font-mono);
+  color: hsl(var(--accent));
+}
+
+.sim-demo .match-end__none {
+  margin: 0 0 1rem;
+  text-align: center;
+  font-size: var(--font-size-small);
+  color: var(--subtle-color);
+}
+
+.sim-demo .match-end__story {
+  margin: 1.5rem 0;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  background: hsl(var(--card));
+}
+
+.sim-demo .match-end__story h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+  color: var(--text-color);
+}
+
+.sim-demo .match-end__story p {
+  margin: 0 0 0.75rem;
+  font-size: var(--font-size-small);
+  color: var(--text-color);
+  line-height: 1.7;
+}
+
+.sim-demo .match-end__story article {
+  margin-top: 0.75rem;
+}
+
+.sim-demo .match-end__story h4 {
+  margin: 0 0 0.3rem;
+  font-size: var(--font-size-small);
+  color: var(--brand-color);
+}
+
+.sim-demo .match-end__actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 1.5rem;
+}
+
+.sim-demo .match-end__continue {
+  min-width: 12rem;
+  padding: 0.75rem 2rem;
+  border: none;
+  border-radius: 7px;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: hsl(var(--accent-on));
+  background: var(--brand-color);
+  cursor: pointer;
+  transition: filter 0.12s ease, box-shadow 0.12s ease;
+}
+
+.sim-demo .match-end__continue:hover {
+  filter: brightness(1.08);
+  box-shadow: inset 0 0 0 1px hsl(var(--accent));
+}
+
+/* ------------------------------------------------------------------ */
+/* 赛前设置页（MATCH 模式进入比赛前的可操作战术面板）                 */
+/* ------------------------------------------------------------------ */
+
+.sim-demo .prematch {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 1.5rem 0 3rem;
+}
+
+.sim-demo .prematch__head {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.sim-demo .prematch__eyebrow {
+  display: block;
+  font-size: var(--font-size-small);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--subtle-color);
+  margin-bottom: 0.35rem;
+}
+
+.sim-demo .prematch__head h2 {
+  margin: 0;
+  font-size: 1.6rem;
+  color: var(--text-color);
+}
+
+.sim-demo .prematch__meta {
+  margin: 0.35rem 0 0;
+  font-size: var(--font-size-small);
+  color: var(--subtle-color);
+}
+
+.sim-demo .prematch__block {
+  margin-top: 1.5rem;
+}
+
+.sim-demo .prematch__block h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+  color: var(--brand-color);
+}
+
+/* 阵形选择：卡片网格 */
+.sim-demo .prematch__formations {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+}
+
+.sim-demo .prematch__fm {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 0.5rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  background: hsl(var(--row));
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  color: var(--text-color);
+  cursor: pointer;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+
+.sim-demo .prematch__fm:hover {
+  border-color: hsl(var(--accent));
+  box-shadow: inset 0 0 0 1px hsl(var(--accent));
+}
+
+.sim-demo .prematch__fm.is-active {
+  border-color: hsl(var(--accent));
+  background: hsl(var(--row-hi));
+  box-shadow: inset 0 0 0 1px hsl(var(--accent));
+  font-weight: 700;
+  color: hsl(var(--accent));
+}
+
+/* 迷你阵形预览 */
+.sim-demo .fm-preview {
+  pointer-events: none;
+}
+
+.sim-demo .fm-preview__pitch {
+  position: relative;
+  width: 88px;
+  height: 132px;
+  border: 1px solid #2f8f4e;
+  border-radius: 6px;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      #3a9d5d 0px,
+      #3a9d5d 10px,
+      #47b06c 10px,
+      #47b06c 20px
+    );
+}
+
+.sim-demo .fm-preview__pitch::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1px solid rgba(255, 255, 255, 0.45);
+}
+
+.sim-demo .fm-preview__pitch::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.sim-demo .fm-preview__dot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid hsl(84 10% 93% / 0.5);
+  border-radius: 50%;
+  background: hsl(var(--card));
+  color: hsl(var(--text));
+  font-family: var(--font-mono);
+  font-size: 8px;
+  line-height: 1;
+}
+
+.sim-demo .fm-preview__dot--gk {
+  background: hsl(var(--gold));
+  color: hsl(var(--accent-on));
+}
+
+/* 战术风格：卡片网格 */
+.sim-demo .prematch__styles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+
+.sim-demo .prematch__style {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  background: hsl(var(--row));
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+
+.sim-demo .prematch__style strong {
+  font-size: 1rem;
+  color: var(--text-color);
+}
+
+.sim-demo .prematch__style span {
+  font-size: var(--font-size-small);
+  color: var(--subtle-color);
+}
+
+.sim-demo .prematch__style:hover {
+  border-color: hsl(var(--accent));
+  box-shadow: inset 0 0 0 1px hsl(var(--accent));
+}
+
+.sim-demo .prematch__style.is-active {
+  border-color: hsl(var(--accent));
+  background: hsl(var(--row-hi));
+  box-shadow: inset 0 0 0 1px hsl(var(--accent));
+}
+
+.sim-demo .prematch__style.is-active strong {
+  color: hsl(var(--accent));
+}
+
+/* 心态 / 进攻重点：分段选择 */
+.sim-demo .prematch__seg {
+  display: inline-flex;
+  gap: 0.5rem;
+}
+
+.sim-demo .prematch__seg button {
+  min-width: 6rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 7px;
+  background: hsl(var(--row));
+  font-size: 0.9rem;
+  color: var(--text-color);
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+}
+
+.sim-demo .prematch__seg button:hover {
+  border-color: hsl(var(--accent));
+}
+
+.sim-demo .prematch__seg button.is-active {
+  border-color: hsl(var(--accent));
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-on));
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px hsl(var(--accent));
+}
+
+/* 战术细节滑块 */
+.sim-demo .prematch__sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.sim-demo .prematch__slider {
+  display: grid;
+  grid-template-columns: 7rem 1fr 2.5rem;
+  align-items: center;
+  gap: 1rem;
+}
+
+.sim-demo .prematch__slider span {
+  font-size: var(--font-size-small);
+  color: var(--text-color);
+}
+
+.sim-demo .prematch__slider b {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  color: var(--brand-color);
+  text-align: right;
+}
+
+.sim-demo .prematch__slider input[type='range'] {
+  width: 100%;
+  accent-color: var(--brand-color);
+}
+
+/* 底部操作 */
+.sim-demo .prematch__actions {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.sim-demo .prematch__exit {
+  min-width: 8rem;
+  padding: 0.75rem 1.5rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 7px;
+  font-size: 1rem;
+  color: var(--text-color);
+  background: hsl(var(--row));
+  cursor: pointer;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.sim-demo .prematch__exit:hover {
+  border-color: hsl(var(--accent));
+  box-shadow: inset 0 0 0 1px hsl(var(--accent));
+}
+
+.sim-demo .prematch__start {
+  min-width: 12rem;
+  padding: 0.75rem 2rem;
+  border: none;
+  border-radius: 7px;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: hsl(var(--accent-on));
+  background: var(--brand-color);
+  cursor: pointer;
+  transition: filter 0.12s ease, box-shadow 0.12s ease;
+}
+
+.sim-demo .prematch__start:hover {
+  filter: brightness(1.08);
+  box-shadow: inset 0 0 0 1px hsl(var(--accent));
+}
+
+/* ------------------------------------------------------------------ */
+/* 比赛构建 loading（确认赛前设置后、引擎跑完快照前）                */
+/* ------------------------------------------------------------------ */
+
+.sim-demo .match-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  min-height: 60vh;
+  padding: 4rem 1.5rem;
+  text-align: center;
+}
+
+.sim-demo .match-loading__spinner {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--brand-color);
+  animation: match-loading-spin 0.8s linear infinite;
+}
+
+.sim-demo .match-loading p {
+  margin: 0;
+  font-size: var(--font-size-small);
+  letter-spacing: 0.06em;
+  color: var(--subtle-color);
+}
+
+@keyframes match-loading-spin {
+  to { transform: rotate(360deg); }
+}

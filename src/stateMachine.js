@@ -24,6 +24,7 @@ export const PHASES = {
   CAREER: 'career',
   MATCH: 'match',
   SUMMARY: 'summary',
+  DEMO: 'demo',
 };
 
 export const CAREER = {
@@ -293,6 +294,30 @@ export function applyLeaveMatch(state) {
   };
 }
 
+/** Continue past a resolved event result — advance the career (no match). */
+export function applyContinueCareer(state) {
+  SIM.cont();
+  const simState = SIM.state();
+
+  if (simState?.phase === 'summary') {
+    return {
+      phase: PHASES.SUMMARY,
+      simState,
+      pendingEvent: null,
+      pendingResult: null,
+      spinning: null,
+    };
+  }
+
+  return {
+    phase: PHASES.CAREER,
+    simState,
+    pendingEvent: simState?.pending || null,
+    pendingResult: null,
+    spinning: null,
+  };
+}
+
 /** CONTINUE — dispatches based on current career sub-state. */
 export function applyContinue(state) {
   const careerState = deriveCareerState(state);
@@ -310,9 +335,13 @@ export function applyContinue(state) {
   }
 
   switch (careerState) {
-    case CAREER.EVENT_RESULT:
+    // 赛季回顾（recap/report）→ 判定进入模拟比赛 → 赛前设置 → 比赛页
     case CAREER.RECAP:
       return applyStartMatch(state);
+
+    // 事件结果后点继续 → 不是比赛，而是继续推进生涯
+    case CAREER.EVENT_RESULT:
+      return applyContinueCareer(state);
 
     case CAREER.END:
       SIM.goSummary('无处可去');
@@ -359,8 +388,11 @@ export function applyChoose(state, index) {
       return applyChooseAcademyTransfer(state, index);
 
     case CAREER.EVENT_RESULT:
+      // Clicking while an event result is showing → continue career (no match)
+      return applyContinueCareer(state);
+
     case CAREER.RECAP:
-      // Clicking on anything while result is showing → start match
+      // Clicking while the season recap is showing → start match
       return applyStartMatch(state);
 
     case CAREER.END:

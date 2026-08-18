@@ -1,3 +1,5 @@
+// [DEPRECATED] 已弃用 — 比赛画面改由 simulatorDemo 的 vendor 引擎渲染。
+// 本文件保留仅作历史参考，无任何活代码引用（仅被已弃用的 MatchView.jsx 引用）。
 // PitchCanvas — 2D top-down football pitch renderer (T06 enhanced)
 //
 // Enhanced with:

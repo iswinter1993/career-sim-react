@@ -1,3 +1,5 @@
+// [DEPRECATED] 已弃用 — 赛中指令（换人/变阵）逻辑不再使用。
+// 本文件保留仅作历史参考，无任何活代码引用（仅被已弃用的 MatchView.jsx 引用）。
 // matchCommands.js — Design Pattern #2: Command
 //
 // Match interventions (substitutions, formation changes) are wrapped as

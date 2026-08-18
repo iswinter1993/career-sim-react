@@ -1,3 +1,6 @@
+// [DEPRECATED] 已弃用 — 比赛模拟 UI 已由 src/simulatorDemo/SimulatorDemoView.jsx
+// + vendor RealTimeEngine 取代。本文件保留仅作历史参考，无任何活代码引用；
+// 其 imports（squadGen / mapGrowthToSubAttrs / matchEngine 等）已随迁移失效。
 // MatchView — the main match simulation page (T05)
 //
 // Layout (three-column broadcast):

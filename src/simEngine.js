@@ -173,14 +173,6 @@ const SIM = {
     return ATTRS.getAttributes();
   },
 
-  getCategory(attrs, category) {
-    return ATTRS.getCategory(attrs, category);
-  },
-
-  getWeights(pos) {
-    return ATTRS.getWeights(pos);
-  },
-
   getOVRFromAttributes(attrs, pos) {
     return ATTRS.getOVRFromAttributes(attrs, pos);
   },

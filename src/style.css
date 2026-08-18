@@ -1166,9 +1166,10 @@ img.crest.plate {
   font-size: 1.05rem; font-weight: 800; font-variant-numeric: tabular-nums; margin-left: auto;
 }
 
-.cat-block--tech .cat-block-score { color: #27ae60; }
-.cat-block--phys .cat-block-score { color: #e67e22; }
+.cat-block--technical .cat-block-score { color: #27ae60; }
+.cat-block--physical .cat-block-score { color: #e67e22; }
 .cat-block--mental .cat-block-score { color: #3498db; }
+.cat-block--goalkeeping .cat-block-score { color: #9b59b6; }
 
 /* Cards grid inside each category */
 .cat-block-cards {
@@ -2942,5 +2943,20 @@ img.crest.plate {
 .inmatch-resume-btn {
   margin-top: 0.5rem;
   width: 100%;
+}
+
+/* 顶栏右上角的按钮组（模拟器 + 玩法） */
+.topbar-actions {
+  position: absolute;
+  right: .75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+}
+.topbar-actions .corner-btn {
+  position: static;
+  transform: none;
 }
 

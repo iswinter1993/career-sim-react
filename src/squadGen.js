@@ -1,3 +1,7 @@
+// [DEPRECATED] 已弃用 — 阵容生成改由 src/vendorSquad.js 直接产出 vendor 的
+// Player/Team（46 属性，1-20 刻度），不再走本文件的 15 子属性 + 映射层。
+// 本文件保留仅作历史参考，无任何活代码引用；其 imports（SUB_ATTRS/getWeights/
+// mapToEngineSkills）已随 attributes.js / attributeMapping.js 的迁移被移除。
 // Random squad generator — creates 18-man teams (11 starters + 7 subs)
 // with full sub-attribute sets and engine-ready skill mapping.
 //
@@ -215,8 +219,8 @@ export function pickFormationForSquad(starterPositions) {
  * Generate a single random player.
  *
  * @param {string} position — e.g. 'ST', 'CM', 'GK'
- * @param {number} qualityMin — floor for average sub-attribute value (0-100)
- * @param {number} qualityMax — ceiling for average sub-attribute value (0-100)
+ * @param {number} qualityMin — floor for average sub-attribute value (1-20)
+ * @param {number} qualityMax — ceiling for average sub-attribute value (1-20)
  * @param {object} [overrides] — optional forced values (used for the player's player)
  * @returns {object} { id, name, position, subAttrs, engineSkills, ovr }
  */
@@ -240,9 +244,9 @@ export function generatePlayer(position, qualityMin, qualityMax, overrides) {
     // Core attributes get boosted toward target, fringe ones trend lower
     const importance = w / 10; // 0-1
     const base = target * 0.7 + target * 0.3 * importance;
-    // ±15 jitter
-    const jitter = (rand() - 0.5) * 30;
-    subAttrs[key] = Math.max(0, Math.min(100, Math.round(base + jitter)));
+    // ±3 jitter (1-20 scale)
+    const jitter = (rand() - 0.5) * 6;
+    subAttrs[key] = Math.max(1, Math.min(20, Math.round(base + jitter)));
   }
 
   // Engine-ready skills
@@ -368,10 +372,10 @@ export function buildTeamSquad(playerIdentity, leagueLevel, seed, formation, clu
       usedIds.add('player_self');
       alreadySlotted = true;
     } else {
-      // Generate a random teammate, bias quality toward player OVR
-      const ovr = playerIdentity.subAttrs ? _approxOvr(playerIdentity.subAttrs, playerPos) : quality[0];
-      const qMin = Math.max(quality[0], ovr - 15);
-      const qMax = Math.min(quality[1], ovr + 10);
+      // Generate a random teammate, bias quality toward the player's average (1-20)
+      const playerAvg = playerIdentity.subAttrs ? _subAttrsAvg(playerIdentity.subAttrs) : null;
+      const qMin = playerAvg != null ? Math.max(quality[0], Math.round(playerAvg) - 3) : quality[0];
+      const qMax = playerAvg != null ? Math.max(qMin, Math.min(quality[1], Math.round(playerAvg) + 2)) : quality[1];
       const teammate = generatePlayer(pos, qMin, qMax);
       teammate.id = `tm_${pos}_${starters.length}`;
       while (usedIds.has(teammate.id)) teammate.id += '_';
@@ -441,10 +445,10 @@ export function buildOpponentSquad(teamName, leagueLevel, seed, formation) {
 // ---------------------------------------------------------------------------
 
 const LEAGUE_QUALITY = {
-  1: [65, 95],  // Top league (Chinese Super League)
-  2: [50, 80],  // Second tier
-  3: [35, 65],  // Third tier
-  4: [20, 50],  // Amateur / youth
+  1: [13, 19],  // Top league (Chinese Super League)
+  2: [10, 16],  // Second tier
+  3: [7, 13],   // Third tier
+  4: [4, 10],   // Amateur / youth
 };
 
 // ---------------------------------------------------------------------------
@@ -490,6 +494,16 @@ function _getPosWeights(pos) {
   return getWeights(pos);
 }
 
+/** Average of the 15 visible sub-attributes (1-20), ignoring meta keys. */
+function _subAttrsAvg(subAttrs) {
+  const keys = Object.keys(SUB_ATTRS);
+  let sum = 0;
+  for (const key of keys) {
+    sum += subAttrs[key] || 0;
+  }
+  return sum / keys.length;
+}
+
 function _approxOvr(subAttrs, position) {
   const weights = _getPosWeights(position);
   const catW = weights.cat;
@@ -512,7 +526,8 @@ function _approxOvr(subAttrs, position) {
   for (const cat of cats) {
     ovr += catScores[cat] * (catW[cat] || 0.33);
   }
-  return Math.round(Math.min(99, Math.max(0, ovr)));
+  // 1-20 category average → 0-99 OVR scale (×5)
+  return Math.round(Math.min(99, Math.max(0, ovr * 5)));
 }
 
 export { FORMATIONS }; // re-exported for MatchView

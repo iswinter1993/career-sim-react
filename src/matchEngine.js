@@ -1,3 +1,6 @@
+// [DEPRECATED] 已弃用 — 比赛引擎改由 vendor football-simulator 的 RealTimeEngine
+// 驱动（见 src/simulatorDemo/matchSimulation.js）。本文件保留仅作历史参考，无任何
+// 活代码引用（仅被已弃用的 MatchView.jsx / PitchCanvas.jsx 引用）。
 // Facade wrapper around the in-repo match engine fork (src/engine/engine.js).
 //
 // The engine is the vendored ESM fork of `footballsimulationengine` v5.0.0

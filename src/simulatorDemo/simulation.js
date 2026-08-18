@@ -1,0 +1,477 @@
+// simulation.js — JS 移植自 football-simulator/demo/src/simulation.ts。
+//
+// 引擎从本地 vendor 源码逐个文件直引（vendor/football-simulator/src/），
+// 改源码即时生效，不经过 node_modules 或别名。
+
+import Player from '../../vendor/football-simulator/src/Player';
+import { Position } from '../../vendor/football-simulator/src/enums/Position';
+import RealTimeEngine from '../../vendor/football-simulator/src/RealTimeEngine';
+import Team from '../../vendor/football-simulator/src/Team';
+
+const homePlayers = [
+  // Starting XI
+  { name: 'Nickson Pettigrew', number: 1, position: Position.GK },
+  { name: 'Lasse Quizoz', number: 17, position: Position.LB },
+  { name: 'Marvellous Pak', number: 75, position: Position.LCB },
+  { name: 'Rob Kaskel', number: 7, position: Position.RCB },
+  { name: 'Jomuel Dugelman', number: 84, position: Position.RB },
+  { name: 'Mohamad Ashwoon', number: 76, position: Position.LM },
+  { name: 'Koddi Pak', number: 61, position: Position.LCM },
+  { name: 'Morgyn Fletcher', number: 26, position: Position.RCM },
+  { name: 'Flint Stahl', number: 42, position: Position.RM },
+  { name: 'Munir Johnsen', number: 14, position: Position.LF },
+  { name: 'Rhyse Olson', number: 5, position: Position.RF },
+  // Named substitutes
+  { name: 'Elian Sorensen', number: 31, position: Position.GK },
+  { name: 'Dario Monti', number: 3, position: Position.LB },
+  { name: 'Timo Rinaldi', number: 4, position: Position.LCB },
+  { name: 'Mateo Varga', number: 33, position: Position.RCB },
+  { name: 'Luca Fenwick', number: 2, position: Position.RB },
+  { name: 'Sami Corbett', number: 11, position: Position.LM },
+  { name: 'Niko Bellini', number: 8, position: Position.LCM },
+  { name: 'Tomi Kovac', number: 6, position: Position.RCM },
+  { name: 'Enzo Marr', number: 20, position: Position.RM },
+  { name: 'Ilyas Conti', number: 9, position: Position.LF },
+  { name: 'Jamie Rossetti', number: 10, position: Position.RF },
+];
+
+const awayPlayers = [
+  // Starting XI
+  { name: 'Conal Keller', number: 1, position: Position.GK },
+  { name: 'Hadyn Kalleg', number: 37, position: Position.LB },
+  { name: 'Adenn Orwig', number: 10, position: Position.LCB },
+  { name: 'Rhyley Ingram', number: 59, position: Position.RCB },
+  { name: 'Muhammed Soulis', number: 63, position: Position.RB },
+  { name: 'Rees Baxster', number: 58, position: Position.LCM },
+  { name: 'Peter Ventotla', number: 97, position: Position.CM },
+  { name: 'Jarell Van Zandt', number: 84, position: Position.RCM },
+  { name: 'Ziyaan Myers', number: 100, position: Position.LW },
+  { name: 'Aaran Deitz', number: 64, position: Position.CF },
+  { name: 'Khalan Thompson', number: 45, position: Position.RW },
+  // Named substitutes
+  { name: 'Oskar Lind', number: 30, position: Position.GK },
+  { name: 'Leandro Costa', number: 22, position: Position.LB },
+  { name: 'Bruno Sarti', number: 4, position: Position.LCB },
+  { name: 'Mads Keller', number: 15, position: Position.RCB },
+  { name: 'Isak Moretti', number: 2, position: Position.RB },
+  { name: 'Elias Novak', number: 8, position: Position.LCM },
+  { name: 'Renzo Palmieri', number: 6, position: Position.CM },
+  { name: 'Filip Marin', number: 18, position: Position.RCM },
+  { name: 'Noah Greco', number: 17, position: Position.LW },
+  { name: 'Samir Bell', number: 9, position: Position.CF },
+  { name: 'Leo Caruso', number: 7, position: Position.RW },
+];
+
+const baseAttributes = {
+  aggression: 12,
+  anticipation: 12,
+  bravery: 12,
+  composure: 12,
+  concentration: 12,
+  decisions: 12,
+  determination: 12,
+  flair: 12,
+  leadership: 12,
+  offTheBall: 12,
+  positioning: 12,
+  teamwork: 12,
+  vision: 12,
+  workRate: 12,
+  acceleration: 12,
+  agility: 12,
+  balance: 12,
+  jumpingReach: 12,
+  naturalFitness: 12,
+  pace: 12,
+  stamina: 12,
+  strength: 12,
+  corners: 12,
+  crossing: 12,
+  dribbling: 12,
+  finishing: 12,
+  firstTouch: 12,
+  freeKickTaking: 12,
+  heading: 12,
+  longShots: 12,
+  longThrows: 12,
+  marking: 12,
+  passing: 12,
+  penaltyTaking: 12,
+  tackling: 12,
+  technique: 12,
+  aerialReach: 12,
+  commandOfArea: 12,
+  communication: 12,
+  eccentricity: 12,
+  handling: 12,
+  oneOnOnes: 12,
+  reflexes: 12,
+  rushingOut: 12,
+  tendencyToPunch: 12,
+  throwing: 12,
+};
+
+const restartTypes = ['throw_in', 'corner', 'goal_kick', 'free_kick', 'penalty'];
+const restartAwardOutcomes = new Set(['touchline', 'goal_line', 'foul', 'penalty_foul']);
+const possessionEventTypes = new Set([
+  'kickoff',
+  'throw_in',
+  'corner',
+  'goal_kick',
+  'free_kick',
+  'penalty',
+  'pass',
+  'receive',
+  'interception',
+  'tackle',
+  'recovery',
+  'save',
+  'goalkeeper_claim',
+]);
+
+export function createSimulation(seed = randomSeed()) {
+  const homeTeam = createTeam(true, 'Juventus', homePlayers);
+  const awayTeam = createTeam(false, 'Milan', awayPlayers);
+  const engine = new RealTimeEngine(homeTeam, awayTeam, {
+    random: seededRandom(seed),
+    homeTactics: {
+      formation: '4-4-2',
+      style: 'high_press',
+      press: 62,
+      width: 58,
+      tempo: 66,
+      mentality: 'attacking',
+      defensiveLine: 70,
+      compactness: 48,
+      focus: 'wide',
+    },
+    awayTactics: {
+      formation: '4-3-3',
+      style: 'possession',
+      press: 48,
+      width: 52,
+      tempo: 42,
+      mentality: 'balanced',
+      defensiveLine: 56,
+      compactness: 58,
+      focus: 'central',
+    },
+  });
+
+  const snapshots = engine.simulate(90 * 60 + 15 * 60);
+
+  return {
+    engine,
+    homeTeam,
+    awayTeam,
+    snapshots,
+    events: engine.events,
+    seed,
+  };
+}
+
+export function reportFor(events, snapshot, snapshots = []) {
+  const elapsedEvents = events.filter((event) => event.time <= snapshot.time);
+  const elapsedSnapshots = snapshots.filter((candidate) => candidate.time <= snapshot.time);
+  const report = {
+    home: emptyStats(),
+    away: emptyStats(),
+  };
+
+  elapsedEvents.forEach((event) => {
+    if (!event.teamSide) {
+      return;
+    }
+
+    registerEvent(report[event.teamSide], event);
+  });
+
+  applySnapshotPossession(report, elapsedSnapshots);
+  finalizeTeamStats(report.home);
+  finalizeTeamStats(report.away);
+
+  return {
+    home: report.home,
+    away: report.away,
+    match: matchStats(elapsedEvents, elapsedSnapshots),
+  };
+}
+
+export function eventsUntil(events, snapshot) {
+  return events.filter((event) => event.time <= snapshot.time);
+}
+
+export function formatTime(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  const remainder = Math.floor(seconds % 60);
+
+  return `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
+}
+
+export function formatScoreSheet(events) {
+  return events.filter((event) => event.type === 'goal');
+}
+
+function createTeam(home, name, playerDefinitions) {
+  const players = playerDefinitions.map((player, index) => new Player(
+    {
+      name: player.name,
+      number: player.number,
+    },
+    {
+      height: 178 + (index % 5) * 3,
+      weight: 72 + (index % 4) * 4,
+    },
+    attributesForPosition(player.position),
+    player.position,
+  ));
+
+  return new Team(home, name, players);
+}
+
+function attributesForPosition(position) {
+  const attributes = { ...baseAttributes };
+
+  if ([Position.LF, Position.CF, Position.RF, Position.ST, Position.LW, Position.RW].includes(position)) {
+    attributes.finishing = 18;
+    attributes.composure = 17;
+    attributes.offTheBall = 16;
+    attributes.pace = 15;
+  }
+
+  if ([Position.LCM, Position.CM, Position.RCM, Position.LM, Position.RM].includes(position)) {
+    attributes.passing = 17;
+    attributes.vision = 16;
+    attributes.decisions = 16;
+    attributes.stamina = 16;
+  }
+
+  if ([Position.LB, Position.LCB, Position.CB, Position.RCB, Position.RB].includes(position)) {
+    attributes.tackling = 17;
+    attributes.marking = 16;
+    attributes.positioning = 16;
+    attributes.strength = 15;
+  }
+
+  if (position === Position.GK) {
+    attributes.handling = 17;
+    attributes.reflexes = 17;
+    attributes.oneOnOnes = 17;
+    attributes.positioning = 16;
+  }
+
+  return attributes;
+}
+
+function registerEvent(stats, event) {
+  if (event.type === 'pass') {
+    stats.passes += 1;
+  }
+
+  if (event.type === 'receive') {
+    stats.completedPasses += 1;
+  }
+
+  if (event.type === 'shot') {
+    stats.shots += 1;
+  }
+
+  if (event.type === 'goal' || event.type === 'save') {
+    stats.shotsOnGoal += 1;
+  }
+
+  if (event.type === 'tackle') {
+    stats.tackles += 1;
+  }
+
+  if (event.type === 'foul') {
+    stats.fouls += 1;
+  }
+
+  if (event.type === 'yellow_card') {
+    stats.yellowCards += 1;
+  }
+
+  if (event.type === 'red_card') {
+    stats.redCards += 1;
+  }
+}
+
+function emptyStats() {
+  return {
+    possession: 0,
+    passes: 0,
+    completedPasses: 0,
+    passCompletion: 0,
+    shots: 0,
+    shotsOnGoal: 0,
+    tackles: 0,
+    fouls: 0,
+    yellowCards: 0,
+    redCards: 0,
+  };
+}
+
+function applySnapshotPossession(report, snapshots) {
+  let homeOwned = 0;
+  let awayOwned = 0;
+
+  snapshots.forEach((snapshot) => {
+    const owner = snapshot.players.find((player) => player.id === snapshot.ball.ownerId);
+
+    if (owner?.teamSide === 'home') {
+      homeOwned += 1;
+    }
+
+    if (owner?.teamSide === 'away') {
+      awayOwned += 1;
+    }
+  });
+
+  const totalOwned = homeOwned + awayOwned;
+
+  report.home.possession = totalOwned ? homeOwned / totalOwned : 0;
+  report.away.possession = totalOwned ? awayOwned / totalOwned : 0;
+}
+
+function finalizeTeamStats(stats) {
+  stats.passCompletion = stats.passes ? stats.completedPasses / stats.passes : 0;
+}
+
+function matchStats(events, snapshots) {
+  const possessions = possessionsFromEvents(events);
+  const looseSnapshots = snapshots.filter((snapshot) => !snapshot.ball.ownerId);
+
+  return {
+    averagePossessionPasses: average(possessions.map((possession) => possession.passes)),
+    longestPossession: Math.max(0, ...possessions.map((possession) => possession.passes)),
+    looseBallShare: ratio(looseSnapshots.length, snapshots.length),
+    ballOwnedShare: ratio(snapshots.length - looseSnapshots.length, snapshots.length),
+    restarts: restartStats(events),
+    passRoutes: countBy(events.filter((event) => event.type === 'pass'), (event) => event.outcome || 'open play'),
+    shotRoutes: countBy(events.filter((event) => event.type === 'shot'), (event) => event.outcome || 'open play'),
+    averageChanceQuality: average(events
+      .filter((event) => event.type === 'shot')
+      .map((event) => event.chanceQuality || 0)
+      .filter((quality) => quality > 0)),
+    finalThirdEntries: possessionEntryTotal(events, 'finalThirdEntries'),
+    wideEntries: possessionEntryTotal(events, 'wideEntries'),
+    boxEntries: possessionEntryTotal(events, 'boxEntries'),
+    crosses: routeCompletion(events, 'cross'),
+    cutbacks: routeCompletion(events, 'cutback'),
+    throughBalls: routeCompletion(events, 'through_ball'),
+    switches: routeCompletion(events, 'switch_of_play'),
+  };
+}
+
+function countBy(events, keyForEvent) {
+  return events.reduce((counts, event) => {
+    const key = keyForEvent(event);
+
+    counts[key] = (counts[key] || 0) + 1;
+
+    return counts;
+  }, {});
+}
+
+function possessionEntryTotal(events, key) {
+  const possessions = new Map();
+
+  events.forEach((event) => {
+    possessions.set(event.possession.id, Math.max(possessions.get(event.possession.id) || 0, event.possession[key]));
+  });
+
+  return [...possessions.values()].reduce((total, value) => total + value, 0);
+}
+
+function routeCompletion(events, route) {
+  return {
+    attempted: events.filter((event) => event.type === 'pass' && normalizedPassRoute(event.outcome) === route).length,
+    completed: events.filter((event) => event.type === 'receive' && event.possession.lastSuccessfulPassRoute === route).length,
+  };
+}
+
+function normalizedPassRoute(route) {
+  return route?.replace(/_inaccurate$/, '');
+}
+
+function possessionsFromEvents(events) {
+  const possessions = [];
+  let active = null;
+
+  events.forEach((event) => {
+    if (!event.teamSide || !possessionEventTypes.has(event.type)) {
+      return;
+    }
+
+    if (!active || active.side !== event.teamSide) {
+      if (active) {
+        possessions.push(active);
+      }
+
+      active = {
+        side: event.teamSide,
+        passes: 0,
+      };
+    }
+
+    if (event.type === 'pass') {
+      active.passes += 1;
+    }
+  });
+
+  if (active) {
+    possessions.push(active);
+  }
+
+  return possessions;
+}
+
+function restartStats(events) {
+  const stats = Object.fromEntries(restartTypes.map((type) => [
+    type,
+    { awards: 0, executions: 0 },
+  ]));
+
+  events.forEach((event) => {
+    if (!restartTypes.includes(event.type)) {
+      return;
+    }
+
+    if (restartAwardOutcomes.has(event.outcome || '')) {
+      stats[event.type].awards += 1;
+
+      return;
+    }
+
+    stats[event.type].executions += 1;
+  });
+
+  return stats;
+}
+
+function average(values) {
+  if (!values.length) {
+    return 0;
+  }
+
+  return values.reduce((total, value) => total + value, 0) / values.length;
+}
+
+function ratio(value, total) {
+  return total ? value / total : 0;
+}
+
+export function randomSeed() {
+  return Math.floor(Math.random() * 2147483646) + 1;
+}
+
+export function seededRandom(seed) {
+  let value = seed;
+
+  return () => {
+    value = (value * 16807) % 2147483647;
+
+    return (value - 1) / 2147483646;
+  };
+}
